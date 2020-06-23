@@ -482,14 +482,16 @@ if __name__ == '__main__':
     FILE_STR = 'CHARTEVENTS_reduced'
     mp = MimicParser()
 
-    mp.reduce_total(ROOT + 'CHARTEVENTS.csv')
-    mp.create_day_blocks(ROOT + FOLDER + FILE_STR + '.csv')
-    mp.add_admissions_columns(ROOT + FOLDER + FILE_STR + '_24_hour_blocks.csv')
-    mp.add_patient_columns(ROOT + FOLDER + FILE_STR +
-                           '_24_hour_blocks_plus_admissions.csv')
-    # mp.clean_prescriptions(ROOT + FOLDER + FILE_STR +
-    #                      '_24_hour_blocks_plus_admissions_plus_patients.csv')
-    # mp.add_prescriptions(ROOT + FOLDER + FILE_STR +
-    #                      '_24_hour_blocks_plus_admissions_plus_patients.csv')
-    # mp.add_icd_infect(ROOT + FOLDER + FILE_STR + '_24_hour_blocks_plus_admissions_plus_patients_plus_scripts.csv')
-    # mp.add_notes(ROOT + FOLDER + FILE_STR + '_24_hour_blocks_plus_admissions_plus_patients_plus_scripts_plus_icds.csv')
+    # mp.reduce_total(ROOT + 'CHARTEVENTS.csv')
+    # mp.create_day_blocks(ROOT + FOLDER + FILE_STR + '.csv')
+    # mp.add_admissions_columns(ROOT + FOLDER + FILE_STR + '_24_hour_blocks.csv')
+    # mp.add_patient_columns(ROOT + FOLDER + FILE_STR +
+    #                        '_24_hour_blocks_plus_admissions.csv')
+    mp.clean_prescriptions(ROOT + FOLDER + FILE_STR +
+                           '_24_hour_blocks_plus_admissions_plus_patients.csv')
+    mp.add_prescriptions(ROOT + FOLDER + FILE_STR +
+                         '_24_hour_blocks_plus_admissions_plus_patients.csv')
+    mp.add_icd_infect(ROOT + FOLDER + FILE_STR +
+                      '_24_hour_blocks_plus_admissions_plus_patients_plus_scripts.csv')
+    mp.add_notes(ROOT + FOLDER + FILE_STR +
+                 '_24_hour_blocks_plus_admissions_plus_patients_plus_scripts_plus_icds.csv')
