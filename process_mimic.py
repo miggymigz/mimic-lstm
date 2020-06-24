@@ -197,16 +197,21 @@ class MimicParser(object):
 
         print('[reduce_total] START')
 
+        output_file = ROOT + './mapped_elements/CHARTEVENTS_reduced.csv'
+        if os.path.isfile(output_file):
+            print(f'[reduce_total] {output_file} already exists.')
+            print('[reduce_total] Will skip this step.')
+            return
+
         pid = ParseItemID()
         pid.build_dictionary()
         chunksize = 10000000
         columns = ['SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID', 'ITEMID', 'CHARTTIME', 'VALUE',
                    'VALUENUM']
-        output_file = ROOT + './mapped_elements/CHARTEVENTS_reduced.csv'
 
         for i, df_chunk in enumerate(pd.read_csv(filepath, iterator=True, chunksize=chunksize)):
             def function(x, y): return x.union(y)
-            
+
             df = df_chunk[df_chunk['ITEMID'].isin(
                 reduce(function, pid.dictionary.values()))]
             df.dropna(inplace=True, axis=0, subset=columns)
@@ -215,11 +220,11 @@ class MimicParser(object):
                 df.to_csv(output_file, index=False, columns=columns)
                 print('[reduce_total] i=0')
             else:
-                df.to_csv(output_file, index=False, columns=columns, header=None, mode='a')
+                df.to_csv(output_file, index=False,
+                          columns=columns, header=None, mode='a')
                 print(f'[reduce_total] i={i}')
 
         print(f'[reduce_total] output file: {output_file}')
-        
 
     def map_files(self, shard_number, filename, low_memory=False):
         ''' HADM minimum is 100001 and maximum is 199999. Shards are built off of those. 
@@ -272,25 +277,35 @@ class MimicParser(object):
         pid = ParseItemID()
         pid.build_dictionary()
         pid.reverse_dictionary(pid.dictionary)
+
         df = pd.read_csv(file_name)
         df['CHARTDAY'] = df['CHARTTIME'].astype(
             'str').str.split(' ').apply(lambda x: x[0])
         df['HADMID_DAY'] = df['HADM_ID'].astype('str') + '_' + df['CHARTDAY']
         df['FEATURES'] = df['ITEMID'].apply(lambda x: pid.rev[x])
+        print(f'[DEBUG] df.shape={df.shape}')
+
         self.hadm_dict = dict(zip(df['HADMID_DAY'], df['SUBJECT_ID']))
-        df2 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
-                             values='VALUENUM', fill_value=np.nan)
+
+        df2 = pd.pivot_table(
+            df, index='HADMID_DAY', columns='FEATURES', values='VALUENUM', fill_value=np.nan)
+        print(f'[DEBUG] df2.shape={df2.shape}')
         df3 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
                              values='VALUENUM', aggfunc=np.std, fill_value=0)
+        print(f'[DEBUG] df3.shape={df3.shape}')
         df3.columns = ["{0}_std".format(i) for i in list(df2.columns)]
         df4 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
                              values='VALUENUM', aggfunc=np.amin, fill_value=np.nan)
+        print(f'[DEBUG] df4.shape={df4.shape}')
         df4.columns = ["{0}_min".format(i) for i in list(df2.columns)]
         df5 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
                              values='VALUENUM', aggfunc=np.amax, fill_value=np.nan)
+        print(f'[DEBUG] df5.shape={df5.shape}')
         df5.columns = ["{0}_max".format(i) for i in list(df2.columns)]
         df2 = pd.concat([df2, df3, df4, df5], axis=1)
+        print(f'[DEBUG] df2.shape={df2.shape}')
         df2['tobacco'].apply(lambda x: np.around(x))
+
         del df2['daily weight_std']
         del df2['daily weight_min']
         del df2['daily weight_max']
@@ -299,7 +314,6 @@ class MimicParser(object):
         del df2['tobacco_max']
 
         rel_columns = list(df2.columns)
-
         rel_columns = [i for i in rel_columns if '_' not in i]
 
         for col in rel_columns:
@@ -416,7 +430,7 @@ class MimicParser(object):
 
         output_file = './mimic_database/PRESCRIPTIONS_reduced.csv'
         pid.prescriptions.to_csv(output_file, index=False)
-        
+
         print(f'[clean_prescriptions] output file: {output_file}')
 
     def add_prescriptions(self, file_name):
@@ -487,7 +501,7 @@ class MimicParser(object):
     def add_notes(self, file_name):
 
         print('[add_notes] START')
-        
+
         df = pd.read_csv('./mimic_database/NOTEEVENTS.csv')
         df_rad_notes = df[['TEXT', 'HADM_ID']][df['CATEGORY'] == 'Radiology']
         CTA_bool_array = df_rad_notes['TEXT'].str.contains(
@@ -511,7 +525,7 @@ class MimicParser(object):
         df2 = pd.read_csv(file_name)
         df2['ct_angio'] = df2['HADM_ID'].apply(
             lambda x: 1 if x in hadm_id_set else 0)
-        
+
         output_file = file_name[0:-4] + '_plus_notes.csv'
         df2.to_csv(output_file, index=False)
 
