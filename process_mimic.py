@@ -304,27 +304,39 @@ class MimicParser(object):
             print('[create_day_blocks] WARN: "tobacco" not in df2.columns')
             df2['tobacco'].apply(lambda x: np.around(x))
 
-        del df2['daily weight_std']
-        del df2['daily weight_min']
-        del df2['daily weight_max']
-        del df2['tobacco_std']
-        del df2['tobacco_min']
-        del df2['tobacco_max']
+        if 'daily weight_std' in df2:
+            print('[create_day_blocks] Will delete "daily weight_std" in df2')
+            del df2['daily weight_std']
+        if 'daily weight_min' in df2:
+            print('[create_day_blocks] Will delete "daily weight_min" in df2')
+            del df2['daily weight_min']
+        if 'daily weight_max' in df2:
+            print('[create_day_blocks] Will delete "daily weight_max" in df2')
+            del df2['daily weight_max']
+        if 'tobacco_std' in df2:
+            print('[create_day_blocks] Will delete "tobacco_std" in df2')
+            del df2['tobacco_std']
+        if 'tobacco_min' in df2:
+            print('[create_day_blocks] Will delete "tobacco_min" in df2')
+            del df2['tobacco_min']
+        if 'tobacco_max' in df2:
+            print('[create_day_blocks] Will delete "tobacco_max" in df2')
+            del df2['tobacco_max']
 
         rel_columns = list(df2.columns)
         rel_columns = [i for i in rel_columns if '_' not in i]
 
         for col in rel_columns:
             if len(np.unique(df2[col])[np.isfinite(np.unique(df2[col]))]) <= 2:
-                print(col)
+                print(f'[create_day_blocks] Will delete "{col}" (std,min,max)')
                 del df2[col + '_std']
                 del df2[col + '_min']
                 del df2[col + '_max']
 
         for i in list(df2.columns):
             df2[i][df2[i] > df2[i].quantile(.95)] = df2[i].median()
-#            if i != 'troponin':
-#                df2[i] = df2[i].where(df2[i] > df2[i].quantile(.875)).fillna(df2[i].median())
+            # if i != 'troponin':
+            #     df2[i] = df2[i].where(df2[i] > df2[i].quantile(.875)).fillna(df2[i].median())
 
         for i in list(df2.columns):
             df2[i].fillna(df2[i].median(), inplace=True)
