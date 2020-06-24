@@ -193,9 +193,6 @@ class MimicParser(object):
 
     def reduce_total(self, filepath, redo=False):
         ''' This will filter out rows from CHARTEVENTS.csv that are not feauture relevant '''
-
-        #CHARTEVENTS = 330712484
-
         print('[reduce_total] START')
 
         output_file = ROOT + './mapped_elements/CHARTEVENTS_reduced.csv'
@@ -206,24 +203,34 @@ class MimicParser(object):
 
         pid = ParseItemID()
         pid.build_dictionary()
-        chunksize = 10000000
-        columns = ['SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID', 'ITEMID', 'CHARTTIME', 'VALUE',
-                   'VALUENUM']
+        chunksize = 10_000_000
+        columns = ['SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID',
+                   'ITEMID', 'CHARTTIME', 'VALUE', 'VALUENUM']
 
-        for i, df_chunk in enumerate(pd.read_csv(filepath, iterator=True, chunksize=chunksize)):
+        iterator = pd.read_csv(filepath, iterator=True, chunksize=chunksize)
+        for i, df_chunk in enumerate(iterator):
             def function(x, y): return x.union(y)
+            dict_values = pid.dictionary.values()
+            criterion = reduce(function, dict_values)
 
-            df = df_chunk[df_chunk['ITEMID'].isin(
-                reduce(function, pid.dictionary.values()))]
-            df.dropna(inplace=True, axis=0, subset=columns)
+            df = df_chunk[df_chunk['ITEMID'].isin(criterion)]
+            df = df.dropna(axis=0, subset=columns)
 
+            print(f'[reduce_total] Processing chunk#{i}')
             if i == 0:
-                df.to_csv(output_file, index=False, columns=columns)
-                print('[reduce_total] i=0')
+                df.to_csv(
+                    output_file,
+                    index=False,
+                    columns=columns,
+                )
             else:
-                df.to_csv(output_file, index=False,
-                          columns=columns, header=None, mode='a')
-                print(f'[reduce_total] i={i}')
+                df.to_csv(
+                    output_file,
+                    index=False,
+                    columns=columns,
+                    header=None,
+                    mode='a',
+                )
 
         print(f'[reduce_total] output file: {output_file}')
 
