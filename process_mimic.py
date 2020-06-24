@@ -32,33 +32,32 @@ class ParseItemID(object):
     def __init__(self):
         self.dictionary = {}
 
-        self.feature_names = ['RBCs', 'WBCs', 'platelets', 'hemoglobin', 'hemocrit',
-                              'atypical lymphocytes', 'bands', 'basophils', 'eosinophils', 'neutrophils',
-                              'lymphocytes', 'monocytes', 'polymorphonuclear leukocytes',
-                              'temperature (F)', 'heart rate', 'respiratory rate', 'systolic', 'diastolic',
-                              'pulse oximetry',
-                              'troponin', 'HDL', 'LDL', 'BUN', 'INR', 'PTT', 'PT', 'triglycerides', 'creatinine',
-                              'glucose', 'sodium', 'potassium', 'chloride', 'bicarbonate',
-                              'blood culture', 'urine culture', 'surface culture', 'sputum' +
-                              ' culture', 'wound culture', 'Inspired O2 Fraction', 'central venous pressure',
-                              'PEEP Set', 'tidal volume', 'anion gap',
-                              'daily weight', 'tobacco', 'diabetes', 'history of CV events']
+        self.feature_names = [
+            'RBCs', 'WBCs', 'platelets', 'hemoglobin', 'hemocrit',
+            'atypical lymphocytes', 'bands', 'basophils', 'eosinophils', 'neutrophils',
+            'lymphocytes', 'monocytes', 'polymorphonuclear leukocytes',
+            'temperature (F)', 'heart rate', 'respiratory rate', 'systolic', 'diastolic',
+            'pulse oximetry', 'troponin', 'HDL', 'LDL', 'BUN', 'INR', 'PTT', 'PT', 'triglycerides',
+            'creatinine', 'glucose', 'sodium', 'potassium', 'chloride', 'bicarbonate',
+            'blood culture', 'urine culture', 'surface culture', 'sputum culture', 'wound culture',
+            'Inspired O2 Fraction', 'central venous pressure', 'PEEP Set', 'tidal volume', 'anion gap',
+            'daily weight', 'tobacco', 'diabetes', 'history of CV events'
+        ]
 
-        self.features = ['$^RBC(?! waste)', '$.*wbc(?!.*apache)', '$^platelet(?!.*intake)',
-                         '$^hemoglobin', '$hematocrit(?!.*Apache)',
-                         'Differential-Atyps', 'Differential-Bands', 'Differential-Basos', 'Differential-Eos',
-                         'Differential-Neuts', 'Differential-Lymphs', 'Differential-Monos', 'Differential-Polys',
-                         'temperature f', 'heart rate', 'respiratory rate', 'systolic', 'diastolic',
-                         'oxymetry(?! )',
-                         'troponin', 'HDL', 'LDL', '$^bun(?!.*apache)', 'INR', 'PTT',
-                         '$^pt\\b(?!.*splint)(?!.*exp)(?!.*leak)(?!.*family)(?!.*eval)(?!.*insp)(?!.*soft)',
-                         'triglyceride', '$.*creatinine(?!.*apache)',
-                         '(?<!boost )glucose(?!.*apache).*',
-                         '$^sodium(?!.*apache)(?!.*bicarb)(?!.*phos)(?!.*ace)(?!.*chlo)(?!.*citrate)(?!.*bar)(?!.*PO)',                          '$.*(?<!penicillin G )(?<!urine )potassium(?!.*apache)',
-                         '^chloride', 'bicarbonate', 'blood culture', 'urine culture', 'surface culture',
-                         'sputum culture', 'wound culture', 'Inspired O2 Fraction', '$Central Venous Pressure(?! )',
-                         'PEEP set', 'tidal volume \(set\)', 'anion gap', 'daily weight', 'tobacco', 'diabetes',
-                         'CV - past']
+        self.features = [
+            '$^RBC(?! waste)', '$.*wbc(?!.*apache)', '$^platelet(?!.*intake)', '$^hemoglobin',
+            '$hematocrit(?!.*Apache)', 'Differential-Atyps', 'Differential-Bands', 'Differential-Basos',
+            'Differential-Eos', 'Differential-Neuts', 'Differential-Lymphs', 'Differential-Monos',
+            'Differential-Polys', 'temperature f', 'heart rate', 'respiratory rate', 'systolic',
+            'diastolic', 'oxymetry(?! )', 'troponin', 'HDL', 'LDL', '$^bun(?!.*apache)', 'INR', 'PTT',
+            '$^pt\\b(?!.*splint)(?!.*exp)(?!.*leak)(?!.*family)(?!.*eval)(?!.*insp)(?!.*soft)',
+            'triglyceride', '$.*creatinine(?!.*apache)', '(?<!boost )glucose(?!.*apache).*',
+            '$^sodium(?!.*apache)(?!.*bicarb)(?!.*phos)(?!.*ace)(?!.*chlo)(?!.*citrate)(?!.*bar)(?!.*PO)',
+            '$.*(?<!penicillin G )(?<!urine )potassium(?!.*apache)', '^chloride', 'bicarbonate',
+            'blood culture', 'urine culture', 'surface culture', 'sputum culture', 'wound culture',
+            'Inspired O2 Fraction', '$Central Venous Pressure(?! )', 'PEEP set', 'tidal volume \(set\)',
+            'anion gap', 'daily weight', 'tobacco', 'diabetes', 'CV - past'
+        ]
 
         self.patterns = []
         for feature in self.features:
@@ -68,72 +67,52 @@ class ParseItemID(object):
                 self.patterns.append(feature[1::])
 
         self.d_items = pd.read_csv(
-            ROOT + 'D_ITEMS.csv', usecols=['ITEMID', 'LABEL'])
+            ROOT + 'D_ITEMS.csv',
+            usecols=['ITEMID', 'LABEL']
+        )
         self.d_items.dropna(how='any', axis=0, inplace=True)
 
-        self.script_features_names = ['epoetin', 'warfarin', 'heparin', 'enoxaparin', 'fondaparinux',
-                                      'asprin', 'ketorolac', 'acetominophen',
-                                      'insulin', 'glucagon',
-                                      'potassium', 'calcium gluconate',
-                                      'fentanyl', 'magensium sulfate',
-                                      'D5W', 'dextrose',
-                                      'ranitidine', 'ondansetron', 'pantoprazole', 'metoclopramide',
-                                      'lisinopril', 'captopril', 'statin',
-                                      'hydralazine', 'diltiazem',
-                                      'carvedilol', 'metoprolol', 'labetalol', 'atenolol',
-                                      'amiodarone', 'digoxin(?!.*fab)',
-                                      'clopidogrel', 'nitroprusside', 'nitroglycerin',
-                                      'vasopressin', 'hydrochlorothiazide', 'furosemide',
-                                      'atropine', 'neostigmine',
-                                      'levothyroxine',
-                                      'oxycodone', 'hydromorphone', 'fentanyl citrate',
-                                      'tacrolimus', 'prednisone',
-                                      'phenylephrine', 'norepinephrine',
-                                      'haloperidol', 'phenytoin', 'trazodone', 'levetiracetam',
-                                      'diazepam', 'clonazepam',
-                                      'propofol', 'zolpidem', 'midazolam',
-                                      'albuterol', 'ipratropium',
-                                      'diphenhydramine',
-                                      '0.9% Sodium Chloride',
-                                      'phytonadione',
-                                      'metronidazole',
-                                      'cefazolin', 'cefepime', 'vancomycin', 'levofloxacin',
-                                      'cipfloxacin', 'fluconazole',
-                                      'meropenem', 'ceftriaxone', 'piperacillin',
-                                      'ampicillin-sulbactam', 'nafcillin', 'oxacillin',
-                                      'amoxicillin', 'penicillin', 'SMX-TMP']
+        self.script_features_names = [
+            'epoetin', 'warfarin', 'heparin', 'enoxaparin', 'fondaparinux',
+            'asprin', 'ketorolac', 'acetominophen', 'insulin', 'glucagon',
+            'potassium', 'calcium gluconate', 'fentanyl', 'magensium sulfate',
+            'D5W', 'dextrose', 'ranitidine', 'ondansetron', 'pantoprazole',
+            'metoclopramide', 'lisinopril', 'captopril', 'statin', 'hydralazine',
+            'diltiazem', 'carvedilol', 'metoprolol', 'labetalol', 'atenolol',
+            'amiodarone', 'digoxin(?!.*fab)', 'clopidogrel', 'nitroprusside',
+            'nitroglycerin', 'vasopressin', 'hydrochlorothiazide', 'furosemide',
+            'atropine', 'neostigmine', 'levothyroxine', 'oxycodone', 'hydromorphone',
+            'fentanyl citrate', 'tacrolimus', 'prednisone', 'phenylephrine',
+            'norepinephrine', 'haloperidol', 'phenytoin', 'trazodone', 'levetiracetam',
+            'diazepam', 'clonazepam', 'propofol', 'zolpidem', 'midazolam',
+            'albuterol', 'ipratropium', 'diphenhydramine', '0.9% Sodium Chloride',
+            'phytonadione', 'metronidazole', 'cefazolin', 'cefepime', 'vancomycin',
+            'levofloxacin', 'cipfloxacin', 'fluconazole', 'meropenem', 'ceftriaxone',
+            'piperacillin', 'ampicillin-sulbactam', 'nafcillin', 'oxacillin',
+            'amoxicillin', 'penicillin', 'SMX-TMP',
+        ]
 
-        self.script_features = ['epoetin', 'warfarin', 'heparin', 'enoxaparin', 'fondaparinux',
-                                'aspirin', 'keterolac', 'acetaminophen',
-                                'insulin', 'glucagon',
-                                'potassium', 'calcium gluconate',
-                                'fentanyl', 'magnesium sulfate',
-                                'D5W', 'dextrose',
-                                'ranitidine', 'ondansetron', 'pantoprazole', 'metoclopramide',
-                                'lisinopril', 'captopril', 'statin',
-                                'hydralazine', 'diltiazem',
-                                'carvedilol', 'metoprolol', 'labetalol', 'atenolol',
-                                'amiodarone', 'digoxin(?!.*fab)',
-                                'clopidogrel', 'nitroprusside', 'nitroglycerin',
-                                'vasopressin', 'hydrochlorothiazide', 'furosemide',
-                                'atropine', 'neostigmine',
-                                'levothyroxine',
-                                'oxycodone', 'hydromorphone', 'fentanyl citrate',
-                                'tacrolimus', 'prednisone',
-                                'phenylephrine', 'norepinephrine',
-                                'haloperidol', 'phenytoin', 'trazodone', 'levetiracetam',
-                                'diazepam', 'clonazepam',
-                                'propofol', 'zolpidem', 'midazolam',
-                                'albuterol', '^ipratropium',
-                                'diphenhydramine(?!.*%)(?!.*cream)(?!.*/)',
-                                '^0.9% sodium chloride(?! )',
-                                'phytonadione',
-                                'metronidazole(?!.*%)(?! desensit)',
-                                'cefazolin(?! )', 'cefepime(?! )', 'vancomycin', 'levofloxacin',
-                                'cipfloxacin(?!.*ophth)', 'fluconazole(?! desensit)',
-                                'meropenem(?! )', 'ceftriaxone(?! desensit)', 'piperacillin',
-                                'ampicillin-sulbactam', 'nafcillin', 'oxacillin', 'amoxicillin',
-                                'penicillin(?!.*Desen)', 'sulfamethoxazole']
+        self.script_features = [
+            'epoetin', 'warfarin', 'heparin', 'enoxaparin', 'fondaparinux',
+            'aspirin', 'keterolac', 'acetaminophen', 'insulin', 'glucagon',
+            'potassium', 'calcium gluconate', 'fentanyl', 'magnesium sulfate',
+            'D5W', 'dextrose', 'ranitidine', 'ondansetron', 'pantoprazole',
+            'metoclopramide', 'lisinopril', 'captopril', 'statin', 'hydralazine',
+            'diltiazem', 'carvedilol', 'metoprolol', 'labetalol', 'atenolol',
+            'amiodarone', 'digoxin(?!.*fab)', 'clopidogrel', 'nitroprusside',
+            'nitroglycerin', 'vasopressin', 'hydrochlorothiazide', 'furosemide',
+            'atropine', 'neostigmine', 'levothyroxine', 'oxycodone', 'hydromorphone',
+            'fentanyl citrate', 'tacrolimus', 'prednisone', 'phenylephrine',
+            'norepinephrine', 'haloperidol', 'phenytoin', 'trazodone', 'levetiracetam',
+            'diazepam', 'clonazepam', 'propofol', 'zolpidem', 'midazolam',
+            'albuterol', '^ipratropium', 'diphenhydramine(?!.*%)(?!.*cream)(?!.*/)',
+            '^0.9% sodium chloride(?! )', 'phytonadione', 'metronidazole(?!.*%)(?! desensit)',
+            'cefazolin(?! )', 'cefepime(?! )', 'vancomycin', 'levofloxacin',
+            'cipfloxacin(?!.*ophth)', 'fluconazole(?! desensit)',
+            'meropenem(?! )', 'ceftriaxone(?! desensit)', 'piperacillin',
+            'ampicillin-sulbactam', 'nafcillin', 'oxacillin', 'amoxicillin',
+            'penicillin(?!.*Desen)', 'sulfamethoxazole'
+        ]
 
         self.script_patterns = ['.*' + feature +
                                 '.*' for feature in self.script_features]
@@ -213,23 +192,6 @@ class MimicParser(object):
             filepath,
             iterator=True,
             chunksize=chunksize,
-            dtype={
-                'ROW_ID': np.int64,
-                'SUBJECT_ID': np.int64,
-                'HADM_ID': np.int64,
-                'ICUSTAY_ID': np.float64,
-                'ITEMID': np.int64,
-                'CHARTTIME': 'str',
-                'STORETIME': 'str',
-                'CGID': np.float64,
-                'VALUE': np.float64,
-                'VALUENUM': np.float64,
-                'VALUEUOM': 'str',
-                'WARNING': np.int64,
-                'ERROR': np.int64,
-                'RESULTSTATUS': np.float64,
-                'STOPPED': np.float64,
-            }
         )
 
         for i, df_chunk in enumerate(iterator):
@@ -314,8 +276,9 @@ class MimicParser(object):
         pid.reverse_dictionary(pid.dictionary)
 
         df = pd.read_csv(file_name)
-        df['CHARTDAY'] = df['CHARTTIME'].astype(
-            'str').str.split(' ').apply(lambda x: x[0])
+        df['CHARTDAY'] = df['CHARTTIME'].astype('str') \
+            .str.split(' ') \
+            .apply(lambda x: x[0])
         df['HADMID_DAY'] = df['HADM_ID'].astype('str') + '_' + df['CHARTDAY']
         df['FEATURES'] = df['ITEMID'].apply(lambda x: pid.rev[x])
         print(f'[DEBUG] df.shape={df.shape}')
@@ -324,31 +287,22 @@ class MimicParser(object):
 
         df2 = pd.pivot_table(
             df, index='HADMID_DAY', columns='FEATURES', values='VALUENUM', fill_value=np.nan)
-        print(f'[DEBUG] df2.columns={list(df2.columns)}')
-        print(f'[DEBUG] df2.shape={df2.shape}')
 
         df3 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
                              values='VALUENUM', aggfunc=np.std, fill_value=0)
         df3.columns = ["{0}_std".format(i) for i in list(df2.columns)]
-        print(f'[DEBUG] df3.columns={list(df3.columns)}')
-        print(f'[DEBUG] df3.shape={df3.shape}')
 
         df4 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
                              values='VALUENUM', aggfunc=np.amin, fill_value=np.nan)
         df4.columns = ["{0}_min".format(i) for i in list(df2.columns)]
-        print(f'[DEBUG] df4.columns={list(df4.columns)}')
-        print(f'[DEBUG] df4.shape={df4.shape}')
 
         df5 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
                              values='VALUENUM', aggfunc=np.amax, fill_value=np.nan)
-        df5.columns = ["{0}_max".format(i) for i in list(df2.columns)]
-        print(f'[DEBUG] df5.columns={list(df5.columns)}')
-        print(f'[DEBUG] df5.shape={df5.shape}')
 
         df2 = pd.concat([df2, df3, df4, df5], axis=1, sort=True)
-        print(f'[DEBUG] df2.columns={list(df2.columns)}')
-        print(f'[DEBUG] df2.shape={df2.shape}')
-        df2['tobacco'].apply(lambda x: np.around(x))
+        if 'tobacco' in df2.columns:
+            print('[create_day_blocks] WARN: "tobacco" not in df2.columns')
+            df2['tobacco'].apply(lambda x: np.around(x))
 
         del df2['daily weight_std']
         del df2['daily weight_min']
