@@ -203,20 +203,41 @@ class MimicParser(object):
 
         pid = ParseItemID()
         pid.build_dictionary()
+        dict_values = pid.dictionary.values()
+        dict_values = reduce(lambda x, y: x.union(y), dict_values)
+
         chunksize = 10_000_000
         columns = ['SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID',
                    'ITEMID', 'CHARTTIME', 'VALUE', 'VALUENUM']
+        iterator = pd.read_csv(
+            filepath,
+            iterator=True,
+            chunksize=chunksize,
+            dtype={
+                'ROW_ID': np.int64,
+                'SUBJECT_ID': np.int64,
+                'HADM_ID': np.int64,
+                'ICUSTAY_ID': np.float64,
+                'ITEMID': np.int64,
+                'CHARTTIME': 'str',
+                'STORETIME': 'str',
+                'CGID': np.float64,
+                'VALUE': np.float64,
+                'VALUENUM': np.float64,
+                'VALUEUOM': 'str',
+                'WARNING': np.int64,
+                'ERROR': np.int64,
+                'RESULTSTATUS': np.float64,
+                'STOPPED': np.float64,
+            }
+        )
 
-        iterator = pd.read_csv(filepath, iterator=True, chunksize=chunksize)
         for i, df_chunk in enumerate(iterator):
-            def function(x, y): return x.union(y)
-            dict_values = pid.dictionary.values()
-            criterion = reduce(function, dict_values)
+            print(f'[reduce_total] Processing chunk#{i}')
 
-            df = df_chunk[df_chunk['ITEMID'].isin(criterion)]
+            df = df_chunk[df_chunk['ITEMID'].isin(dict_values)]
             df = df.dropna(axis=0, subset=columns)
 
-            print(f'[reduce_total] Processing chunk#{i}')
             if i == 0:
                 df.to_csv(
                     output_file,
