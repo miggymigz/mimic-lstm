@@ -294,21 +294,21 @@ class MimicParser(object):
 
         df3 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
                              values='VALUENUM', aggfunc=np.std, fill_value=0)
+        df3.columns = ["{0}_std".format(i) for i in list(df2.columns)]
         print(f'[DEBUG] df3.columns={list(df3.columns)}')
         print(f'[DEBUG] df3.shape={df3.shape}')
-        df3.columns = ["{0}_std".format(i) for i in list(df2.columns)]
 
         df4 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
                              values='VALUENUM', aggfunc=np.amin, fill_value=np.nan)
+        df4.columns = ["{0}_min".format(i) for i in list(df2.columns)]
         print(f'[DEBUG] df4.columns={list(df4.columns)}')
         print(f'[DEBUG] df4.shape={df4.shape}')
-        df4.columns = ["{0}_min".format(i) for i in list(df2.columns)]
 
         df5 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
                              values='VALUENUM', aggfunc=np.amax, fill_value=np.nan)
+        df5.columns = ["{0}_max".format(i) for i in list(df2.columns)]
         print(f'[DEBUG] df5.columns={list(df5.columns)}')
         print(f'[DEBUG] df5.shape={df5.shape}')
-        df5.columns = ["{0}_max".format(i) for i in list(df2.columns)]
 
         df2 = pd.concat([df2, df3, df4, df5], axis=1, sort=True)
         print(f'[DEBUG] df2.columns={list(df2.columns)}')
