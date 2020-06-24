@@ -302,7 +302,8 @@ class MimicParser(object):
                              values='VALUENUM', aggfunc=np.amax, fill_value=np.nan)
         print(f'[DEBUG] df5.shape={df5.shape}')
         df5.columns = ["{0}_max".format(i) for i in list(df2.columns)]
-        df2 = pd.concat([df2, df3, df4, df5], axis=1)
+        df2 = pd.concat([df2, df3, df4, df5], axis=1, sort=True)
+        print(f'[DEBUG] df2.columns={list(df2.columns)}')
         print(f'[DEBUG] df2.shape={df2.shape}')
         df2['tobacco'].apply(lambda x: np.around(x))
 
