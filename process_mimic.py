@@ -195,25 +195,31 @@ class MimicParser(object):
 
         #CHARTEVENTS = 330712484
 
+        print('[reduce_total] START')
+
         pid = ParseItemID()
         pid.build_dictionary()
         chunksize = 10000000
         columns = ['SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID', 'ITEMID', 'CHARTTIME', 'VALUE',
                    'VALUENUM']
+        output_file = ROOT + './mapped_elements/CHARTEVENTS_reduced.csv'
 
         for i, df_chunk in enumerate(pd.read_csv(filepath, iterator=True, chunksize=chunksize)):
             def function(x, y): return x.union(y)
+            
             df = df_chunk[df_chunk['ITEMID'].isin(
                 reduce(function, pid.dictionary.values()))]
             df.dropna(inplace=True, axis=0, subset=columns)
+
             if i == 0:
-                df.to_csv(ROOT + './mapped_elements/CHARTEVENTS_reduced.csv', index=False,
-                          columns=columns)
-                print(i)
+                df.to_csv(output_file, index=False, columns=columns)
+                print('[reduce_total] i=0')
             else:
-                df.to_csv(ROOT + './mapped_elements/CHARTEVENTS_reduced.csv', index=False,
-                          columns=columns, header=None, mode='a')
-                print(i)
+                df.to_csv(output_file, index=False, columns=columns, header=None, mode='a')
+                print(f'[reduce_total] i={i}')
+
+        print(f'[reduce_total] output file: {output_file}')
+        
 
     def map_files(self, shard_number, filename, low_memory=False):
         ''' HADM minimum is 100001 and maximum is 199999. Shards are built off of those. 
@@ -260,6 +266,8 @@ class MimicParser(object):
 
     def create_day_blocks(self, file_name):
         ''' Uses pandas to take shards and build them out '''
+
+        print('[create_day_blocks] START')
 
         pid = ParseItemID()
         pid.build_dictionary()
@@ -319,10 +327,16 @@ class MimicParser(object):
         del df2['PT_min']
         del df2['PT_max']
         df2.dropna(thresh=int(0.75*len(df2.columns)), axis=0, inplace=True)
-        df2.to_csv(file_name[0:-4] + '_24_hour_blocks.csv', index=False)
+
+        output_file = file_name[0:-4] + '_24_hour_blocks.csv'
+        df2.to_csv(output_file, index=False)
+
+        print(f'[create_day_blocks] output file: {output_file}')
 
     def add_admissions_columns(self, file_name):
         ''' Add demographic columns to create_day_blocks '''
+
+        print('[add_admissions_columns] START')
 
         df = pd.read_csv('./mimic_database/ADMISSIONS.csv')
         ethn_dict = dict(zip(df['HADM_ID'], df['ETHNICITY']))
@@ -340,11 +354,16 @@ class MimicParser(object):
         del df_shard['ETHNICITY']
         df_shard['ADMITTIME'] = df_shard['HADM_ID'].apply(
             lambda x: map_dict(x, admittime_dict))
-        df_shard.to_csv(file_name[0:-4] + '_plus_admissions.csv', index=False)
+
+        output_file = file_name[0:-4] + '_plus_admissions.csv'
+        df_shard.to_csv(output_file, index=False)
+
+        print(f'[add_admissions_columns] output file: {output_file}')
 
     def add_patient_columns(self, file_name):
         ''' Add demographic columns to create_day_blocks '''
 
+        print('[add_patient_columns] START')
         df = pd.read_csv('./mimic_database/PATIENTS.csv')
 
         dob_dict = dict(zip(df['SUBJECT_ID'], df['DOB']))
@@ -368,10 +387,16 @@ class MimicParser(object):
         COLUMNS = list(df_shard.columns)
         COLUMNS.remove('GENDER')
         df_shard = pd.concat([df_shard[COLUMNS], gender_dummied], axis=1)
-        df_shard.to_csv(file_name[0:-4] + '_plus_patients.csv', index=False)
+
+        output_file = file_name[0:-4] + '_plus_patients.csv'
+        df_shard.to_csv(output_file, index=False)
+
+        print(f'[add_patient_columns] output file: {output_file}')
 
     def clean_prescriptions(self, file_name):
         ''' Add prescriptions '''
+
+        print('[clean_prescriptions] START')
 
         pid = ParseItemID()
         pid.prescriptions_init()
@@ -389,11 +414,14 @@ class MimicParser(object):
         pid.prescriptions.dropna(
             how='any', axis=0, inplace=True, subset=['DRUG_FEATURE'])
 
-        pid.prescriptions.to_csv(
-            './mimic_database/PRESCRIPTIONS_reduced.csv', index=False)
+        output_file = './mimic_database/PRESCRIPTIONS_reduced.csv'
+        pid.prescriptions.to_csv(output_file, index=False)
+        
+        print(f'[clean_prescriptions] output file: {output_file}')
 
     def add_prescriptions(self, file_name):
 
+        print('[add_prescriptions] START')
         df_file = pd.read_csv(file_name)
 
         with open('./mimic_database/PRESCRIPTIONS_reduced.csv', 'r') as f:
@@ -430,9 +458,14 @@ class MimicParser(object):
         df_merged['dextrose'] = df_merged['dextrose'] + df_merged['D5W']
         del df_merged['D5W']
 
-        df_merged.to_csv(file_name[0:-4] + '_plus_scripts.csv', index=False)
+        output_file = file_name[0:-4] + '_plus_scripts.csv'
+        df_merged.to_csv(output_file, index=False)
+
+        print(f'[add_prescriptions] output file: {output_file}')
 
     def add_icd_infect(self, file_name):
+
+        print('[add_icd_infect] START')
 
         df_icd = pd.read_csv('./mimic_database/PROCEDURES_ICD.csv')
         df_micro = pd.read_csv('./mimic_database/MICROBIOLOGYEVENTS.csv')
@@ -445,9 +478,16 @@ class MimicParser(object):
         df['CKD'] = df['HADM_ID'].apply(lambda x: 1 if x in self.ckd else 0)
         df['Infection'] = df['HADM_ID'].apply(
             lambda x: 1 if x in self.suspect_hadmid else 0)
-        df.to_csv(file_name[0:-4] + '_plus_icds.csv', index=False)
+
+        output_file = file_name[0:-4] + '_plus_icds.csv'
+        df.to_csv(output_file, index=False)
+
+        print(f'[add_icd_infect] output file: {output_file}')
 
     def add_notes(self, file_name):
+
+        print('[add_notes] START')
+        
         df = pd.read_csv('./mimic_database/NOTEEVENTS.csv')
         df_rad_notes = df[['TEXT', 'HADM_ID']][df['CATEGORY'] == 'Radiology']
         CTA_bool_array = df_rad_notes['TEXT'].str.contains(
@@ -471,7 +511,11 @@ class MimicParser(object):
         df2 = pd.read_csv(file_name)
         df2['ct_angio'] = df2['HADM_ID'].apply(
             lambda x: 1 if x in hadm_id_set else 0)
-        df2.to_csv(file_name[0:-4] + '_plus_notes.csv', index=False)
+        
+        output_file = file_name[0:-4] + '_plus_notes.csv'
+        df2.to_csv(output_file, index=False)
+
+        print(f'[add_notes] output file: {output_file}')
 
 
 if __name__ == '__main__':
