@@ -1,14 +1,15 @@
-import pickle
-import math
-import re
-import csv
-import concurrent.futures
-import os
 from functools import reduce
-
 from operator import add
-import pandas as pd
+
+import concurrent.futures
+import csv
+import fire
+import math
 import numpy as np
+import os
+import pandas as pd
+import pickle
+import re
 
 ROOT = "./mimic_database/"
 
@@ -190,7 +191,7 @@ class MimicParser(object):
         self.pid.build_dictionary()
         self.features = self.pid.features
 
-    def reduce_total(self, filepath):
+    def reduce_total(self, filepath, redo=False):
         ''' This will filter out rows from CHARTEVENTS.csv that are not feauture relevant '''
 
         #CHARTEVENTS = 330712484
@@ -198,7 +199,7 @@ class MimicParser(object):
         print('[reduce_total] START')
 
         output_file = ROOT + './mapped_elements/CHARTEVENTS_reduced.csv'
-        if os.path.isfile(output_file):
+        if not redo and os.path.isfile(output_file):
             print(f'[reduce_total] {output_file} already exists.')
             print('[reduce_total] Will skip this step.')
             return
@@ -269,10 +270,16 @@ class MimicParser(object):
                                 print(row)
                                 print(e)
 
-    def create_day_blocks(self, file_name):
+    def create_day_blocks(self, file_name, redo=False):
         ''' Uses pandas to take shards and build them out '''
 
         print('[create_day_blocks] START')
+
+        output_file = file_name[:-4] + '_24_hour_blocks.csv'
+        if not redo and os.path.isfile(output_file):
+            print(f'[create_day_blocks] {output_file} already exists.')
+            print('[create_day_blocks] Will skip this step.')
+            return
 
         pid = ParseItemID()
         pid.build_dictionary()
@@ -350,16 +357,20 @@ class MimicParser(object):
         del df2['PT_min']
         del df2['PT_max']
         df2.dropna(thresh=int(0.75*len(df2.columns)), axis=0, inplace=True)
-
-        output_file = file_name[0:-4] + '_24_hour_blocks.csv'
         df2.to_csv(output_file, index=False)
 
         print(f'[create_day_blocks] output file: {output_file}')
 
-    def add_admissions_columns(self, file_name):
+    def add_admissions_columns(self, file_name, redo=False):
         ''' Add demographic columns to create_day_blocks '''
 
         print('[add_admissions_columns] START')
+
+        output_file = file_name[:-4] + '_plus_admissions.csv'
+        if not redo and os.path.isfile(output_file):
+            print(f'[add_admissions_columns] {output_file} already exists.')
+            print('[add_admissions_columns] Will skip this step.')
+            return
 
         df = pd.read_csv('./mimic_database/ADMISSIONS.csv')
         ethn_dict = dict(zip(df['HADM_ID'], df['ETHNICITY']))
@@ -377,18 +388,22 @@ class MimicParser(object):
         del df_shard['ETHNICITY']
         df_shard['ADMITTIME'] = df_shard['HADM_ID'].apply(
             lambda x: map_dict(x, admittime_dict))
-
-        output_file = file_name[0:-4] + '_plus_admissions.csv'
         df_shard.to_csv(output_file, index=False)
 
         print(f'[add_admissions_columns] output file: {output_file}')
 
-    def add_patient_columns(self, file_name):
+    def add_patient_columns(self, file_name, redo=False):
         ''' Add demographic columns to create_day_blocks '''
 
         print('[add_patient_columns] START')
-        df = pd.read_csv('./mimic_database/PATIENTS.csv')
 
+        output_file = file_name[:-4] + '_plus_patients.csv'
+        if not redo and os.path.isfile(output_file):
+            print(f'[add_patient_columns] {output_file} already exists.')
+            print('[add_patient_columns] Will skip this step.')
+            return
+
+        df = pd.read_csv('./mimic_database/PATIENTS.csv')
         dob_dict = dict(zip(df['SUBJECT_ID'], df['DOB']))
         gender_dict = dict(zip(df['SUBJECT_ID'], df['GENDER']))
         df_shard = pd.read_csv(file_name)
@@ -410,16 +425,20 @@ class MimicParser(object):
         COLUMNS = list(df_shard.columns)
         COLUMNS.remove('GENDER')
         df_shard = pd.concat([df_shard[COLUMNS], gender_dummied], axis=1)
-
-        output_file = file_name[0:-4] + '_plus_patients.csv'
         df_shard.to_csv(output_file, index=False)
 
         print(f'[add_patient_columns] output file: {output_file}')
 
-    def clean_prescriptions(self, file_name):
+    def clean_prescriptions(self, file_name, redo=False):
         ''' Add prescriptions '''
 
         print('[clean_prescriptions] START')
+
+        output_file = './mimic_database/PRESCRIPTIONS_reduced.csv'
+        if not redo and os.path.isfile(output_file):
+            print(f'[clean_prescriptions] {output_file} already exists.')
+            print('[clean_prescriptions] Will skip this step.')
+            return
 
         pid = ParseItemID()
         pid.prescriptions_init()
@@ -436,17 +455,20 @@ class MimicParser(object):
 
         pid.prescriptions.dropna(
             how='any', axis=0, inplace=True, subset=['DRUG_FEATURE'])
-
-        output_file = './mimic_database/PRESCRIPTIONS_reduced.csv'
         pid.prescriptions.to_csv(output_file, index=False)
 
         print(f'[clean_prescriptions] output file: {output_file}')
 
-    def add_prescriptions(self, file_name):
-
+    def add_prescriptions(self, file_name, redo=False):
         print('[add_prescriptions] START')
-        df_file = pd.read_csv(file_name)
 
+        output_file = file_name[:-4] + '_plus_scripts.csv'
+        if not redo and os.path.isfile(output_file):
+            print(f'[clean_prescriptions] {output_file} already exists.')
+            print('[clean_prescriptions] Will skip this step.')
+            return
+
+        df_file = pd.read_csv(file_name)
         with open('./mimic_database/PRESCRIPTIONS_reduced.csv', 'r') as f:
             csvreader = csv.reader(f)
             with open('./mimic_database/PRESCRIPTIONS_reduced_byday.csv', 'w') as g:
@@ -481,14 +503,18 @@ class MimicParser(object):
         df_merged['dextrose'] = df_merged['dextrose'] + df_merged['D5W']
         del df_merged['D5W']
 
-        output_file = file_name[0:-4] + '_plus_scripts.csv'
         df_merged.to_csv(output_file, index=False)
 
         print(f'[add_prescriptions] output file: {output_file}')
 
-    def add_icd_infect(self, file_name):
-
+    def add_icd_infect(self, file_name, redo=False):
         print('[add_icd_infect] START')
+
+        output_file = file_name[:-4] + '_plus_icds.csv'
+        if not redo and os.path.isfile(output_file):
+            print(f'[clean_prescriptions] {output_file} already exists.')
+            print('[clean_prescriptions] Will skip this step.')
+            return
 
         df_icd = pd.read_csv('./mimic_database/PROCEDURES_ICD.csv')
         df_micro = pd.read_csv('./mimic_database/MICROBIOLOGYEVENTS.csv')
@@ -501,15 +527,18 @@ class MimicParser(object):
         df['CKD'] = df['HADM_ID'].apply(lambda x: 1 if x in self.ckd else 0)
         df['Infection'] = df['HADM_ID'].apply(
             lambda x: 1 if x in self.suspect_hadmid else 0)
-
-        output_file = file_name[0:-4] + '_plus_icds.csv'
         df.to_csv(output_file, index=False)
 
         print(f'[add_icd_infect] output file: {output_file}')
 
-    def add_notes(self, file_name):
-
+    def add_notes(self, file_name, redo=False):
         print('[add_notes] START')
+
+        output_file = file_name[:-4] + '_plus_notes.csv'
+        if not redo and os.path.isfile(output_file):
+            print(f'[clean_prescriptions] {output_file} already exists.')
+            print('[clean_prescriptions] Will skip this step.')
+            return
 
         df = pd.read_csv('./mimic_database/NOTEEVENTS.csv')
         df_rad_notes = df[['TEXT', 'HADM_ID']][df['CATEGORY'] == 'Radiology']
@@ -534,31 +563,38 @@ class MimicParser(object):
         df2 = pd.read_csv(file_name)
         df2['ct_angio'] = df2['HADM_ID'].apply(
             lambda x: 1 if x in hadm_id_set else 0)
-
-        output_file = file_name[0:-4] + '_plus_notes.csv'
         df2.to_csv(output_file, index=False)
 
         print(f'[add_notes] output file: {output_file}')
 
 
-if __name__ == '__main__':
-
+def main(redo=False):
+    mp = MimicParser()
     pid = ParseItemID()
     pid.build_dictionary()
-    FOLDER = 'mapped_elements/'
-    FILE_STR = 'CHARTEVENTS_reduced'
-    mp = MimicParser()
 
-    mp.reduce_total(ROOT + 'CHARTEVENTS.csv')
-    mp.create_day_blocks(ROOT + FOLDER + FILE_STR + '.csv')
-    mp.add_admissions_columns(ROOT + FOLDER + FILE_STR + '_24_hour_blocks.csv')
-    mp.add_patient_columns(ROOT + FOLDER + FILE_STR +
-                           '_24_hour_blocks_plus_admissions.csv')
-    mp.clean_prescriptions(ROOT + FOLDER + FILE_STR +
-                           '_24_hour_blocks_plus_admissions_plus_patients.csv')
-    mp.add_prescriptions(ROOT + FOLDER + FILE_STR +
-                         '_24_hour_blocks_plus_admissions_plus_patients.csv')
-    mp.add_icd_infect(ROOT + FOLDER + FILE_STR +
-                      '_24_hour_blocks_plus_admissions_plus_patients_plus_scripts.csv')
-    mp.add_notes(ROOT + FOLDER + FILE_STR +
-                 '_24_hour_blocks_plus_admissions_plus_patients_plus_scripts_plus_icds.csv')
+    fpath = ROOT + 'CHARTEVENTS.csv'
+    mp.reduce_total(fpath, redo=redo)
+
+    fpath = ROOT + 'mapped_elements/CHARTEVENTS_reduced.csv'
+    mp.create_day_blocks(fpath, redo=redo)
+
+    fpath = fpath[:-4] + '_24_hour_blocks.csv'
+    mp.add_admissions_columns(fpath, redo=redo)
+
+    fpath = fpath[:-4] + '_plus_admissions.csv'
+    mp.add_patient_columns(fpath, redo=redo)
+
+    fpath = fpath[:-4] + '_plus_patients.csv'
+    mp.clean_prescriptions(fpath, redo=redo)
+    mp.add_prescriptions(fpath, redo=redo)
+
+    fpath = fpath[:-4] + '_plus_scripts.csv'
+    mp.add_icd_infect(fpath, redo=redo)
+
+    fpath = fpath[:-4] + '_plus_icds.csv'
+    mp.add_notes(fpath, redo=redo)
+
+
+if __name__ == '__main__':
+    fire.Fire(main)
