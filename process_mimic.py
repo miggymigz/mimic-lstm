@@ -334,6 +334,7 @@ class MimicParser(object):
                 del df2[col + '_max']
 
         for i in list(df2.columns):
+            print(f'[create_day_blocks] Will average column "{i}"')
             df2[i][df2[i] > df2[i].quantile(.95)] = df2[i].median()
             # if i != 'troponin':
             #     df2[i] = df2[i].where(df2[i] > df2[i].quantile(.875)).fillna(df2[i].median())
