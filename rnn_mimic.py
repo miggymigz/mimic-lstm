@@ -28,7 +28,7 @@ from sklearn.metrics import recall_score, precision_score
 from sklearn.model_selection import StratifiedKFold
 
 ROOT = "./mimic_database/mapped_elements/"
-FILE = "CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_patients_plus_scripts_plus_icds_plus_notes.csv"
+FILE = "CHARTEVENTS_preprocessed.csv"
 
 ######################################
 ## MAIN ###
@@ -472,7 +472,7 @@ def pickle_objects(target='MI', time_steps=14):
         (f'./pickled_objects/features_{target}.txt', features),
     ]
 
-    for fname, data in output_pairs:
+    for fname, data in tqdm(output_pairs):
         with open(fname, 'wb') as fd:
             pickle.dump(data, fd)
 
