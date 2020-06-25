@@ -26,7 +26,7 @@ from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, cla
 from sklearn.metrics import recall_score, precision_score
 from sklearn.model_selection import StratifiedKFold
 
-ROOT = "./mimic_database/mapped_elements/"
+ROOT = os.path.join('mimic_database', 'mapped_elements')
 FILE = "CHARTEVENTS_preprocessed.csv"
 
 ######################################
@@ -340,31 +340,38 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
 
     print(f'[train] START: model_name={model_name}, target={target}')
 
-    f = open('./pickled_objects/X_TRAIN_{0}.txt'.format(target), 'rb')
+    fname = os.path.join('pickled_objects', f'X_TRAIN_{target}.txt')
+    f = open(fname, 'rb')
     X_TRAIN = pickle.load(f)
     f.close()
 
-    f = open('./pickled_objects/Y_TRAIN_{0}.txt'.format(target), 'rb')
+    fname = os.path.join('pickled_objects', f'Y_TRAIN_{target}.txt')
+    f = open(fname, 'rb')
     Y_TRAIN = pickle.load(f)
     f.close()
 
-    f = open('./pickled_objects/X_VAL_{0}.txt'.format(target), 'rb')
+    fname = os.path.join('pickled_objects', f'X_VAL_{target}.txt')
+    f = open(fname, 'rb')
     X_VAL = pickle.load(f)
     f.close()
 
-    f = open('./pickled_objects/Y_VAL_{0}.txt'.format(target), 'rb')
+    fname = os.path.join('pickled_objects', f'Y_VAL_{target}.txt')
+    f = open(fname, 'rb')
     Y_VAL = pickle.load(f)
     f.close()
 
-    f = open('./pickled_objects/x_boolmat_val_{0}.txt'.format(target), 'rb')
+    fname = os.path.join('pickled_objects', f'x_boolmat_val_{target}.txt')
+    f = open(fname, 'rb')
     X_BOOLMAT_VAL = pickle.load(f)
     f.close()
 
-    f = open('./pickled_objects/y_boolmat_val_{0}.txt'.format(target), 'rb')
+    fname = os.path.join('pickled_objects', f'y_boolmat_val_{target}.txt')
+    f = open(fname, 'rb')
     Y_BOOLMAT_VAL = pickle.load(f)
     f.close()
 
-    f = open('./pickled_objects/no_feature_cols_{0}.txt'.format(target), 'rb')
+    fname = os.path.join('pickled_objects', f'no_feature_cols_{target}.txt')
+    f = open(fname, 'rb')
     no_feature_cols = pickle.load(f)
     f.close()
 
@@ -377,27 +384,31 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
     print(f'[train] Model successfully built')
 
     # init callbacks
-    tb_callback = TensorBoard(log_dir='./logs/{0}_{1}.log'.format(model_name, time),
-                              histogram_freq=0,
-                              write_grads=False,
-                              write_images=True,
-                              write_graph=True)
+    log_dir = os.path.join('logs', f'{model_name}_{time}.log')
+    tb_callback = TensorBoard(
+        log_dir=log_dir,
+        histogram_freq=0,
+        write_grads=False,
+        write_images=True,
+        write_graph=True,
+    )
 
     # Make checkpoint dir and init checkpointer
-    checkpoint_dir = "./saved_models/{0}".format(model_name)
-    print(f'[train] Checkpoint directory: {checkpoint_dir}')
+    # checkpoint_dir = "./saved_models/{0}".format(model_name)
+    # print(f'[train] Checkpoint directory: {checkpoint_dir}')
 
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
+    # if not os.path.exists(checkpoint_dir):
+    #     os.makedirs(checkpoint_dir)
 
-    checkpointer = ModelCheckpoint(
-        filepath=checkpoint_dir+"/model.{epoch:02d}-{val_loss:.2f}.hdf5",
-        monitor='val_loss',
-        verbose=0,
-        save_best_only=True,
-        save_weights_only=False,
-        mode='auto',
-        period=1)
+    # checkpointer = ModelCheckpoint(
+    #     filepath=checkpoint_dir+"/model.{epoch:02d}-{val_loss:.2f}.hdf5",
+    #     monitor='val_loss',
+    #     verbose=0,
+    #     save_best_only=True,
+    #     save_weights_only=False,
+    #     mode='auto',
+    #     period=1
+    # )
 
     # fit
     print(f'[train] Training model...')
@@ -408,9 +419,10 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
         epochs=epochs,
         callbacks=[tb_callback],  # , checkpointer],
         validation_data=(X_VAL, Y_VAL),
-        shuffle=True)
+        shuffle=True,
+    )
 
-    saved_model_dir = f'./saved_models/{model_name}.h5'
+    saved_model_dir = os.path.join('saved_models', f'{model_name}.h5')
     model.save(saved_model_dir)
     print(f'[train] Trained model saved in: {saved_model_dir}')
 
@@ -435,8 +447,8 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
 
 
 def return_loaded_model(model_name="kaji_mach_0"):
-
-    loaded_model = load_model("./saved_models/{0}.h5".format(model_name))
+    model_dir = os.path.join('saved_models', f'{model_name}.h5')
+    loaded_model = load_model(model_dir)
 
     return loaded_model
 
@@ -445,18 +457,18 @@ def pickle_objects(target='MI', time_steps=14):
     print(f'[pickle_objects] START: target={target}')
 
     output_filenames = [
-        f'./pickled_objects/X_TRAIN_{target}.txt',
-        f'./pickled_objects/X_VAL_{target}.txt',
-        f'./pickled_objects/Y_TRAIN_{target}.txt',
-        f'./pickled_objects/Y_VAL_{target}.txt',
-        f'./pickled_objects/X_TEST_{target}.txt',
-        f'./pickled_objects/Y_TEST_{target}.txt',
-        f'./pickled_objects/x_boolmat_test_{target}.txt',
-        f'./pickled_objects/y_boolmat_test_{target}.txt',
-        f'./pickled_objects/x_boolmat_val_{target}.txt',
-        f'./pickled_objects/y_boolmat_val_{target}.txt',
-        f'./pickled_objects/no_feature_cols_{target}.txt',
-        f'./pickled_objects/features_{target}.txt',
+        os.path.join('pickled_objects', f'X_TRAIN_{target}.txt'),
+        os.path.join('pickled_objects', f'X_VAL_{target}.txt'),
+        os.path.join('pickled_objects', f'Y_TRAIN_{target}.txt'),
+        os.path.join('pickled_objects', f'Y_VAL_{target}.txt'),
+        os.path.join('pickled_objects', f'X_TEST_{target}.txt'),
+        os.path.join('pickled_objects', f'Y_TEST_{target}.txt'),
+        os.path.join('pickled_objects', f'x_boolmat_test_{target}.txt'),
+        os.path.join('pickled_objects', f'y_boolmat_test_{target}.txt'),
+        os.path.join('pickled_objects', f'x_boolmat_val_{target}.txt'),
+        os.path.join('pickled_objects', f'y_boolmat_val_{target}.txt'),
+        os.path.join('pickled_objects', f'no_feature_cols_{target}.txt'),
+        os.path.join('pickled_objects', f'features_{target}.txt'),
     ]
 
     if all(os.path.isfile(f) for f in output_filenames):
