@@ -2,7 +2,6 @@
 
 import gc
 from time import time
-from tqdm import tqdm
 import os
 import math
 import pickle
@@ -445,6 +444,26 @@ def return_loaded_model(model_name="kaji_mach_0"):
 def pickle_objects(target='MI', time_steps=14):
     print(f'[pickle_objects] START: target={target}')
 
+    output_filenames = [
+        f'./pickled_objects/X_TRAIN_{target}.txt',
+        f'./pickled_objects/X_VAL_{target}.txt',
+        f'./pickled_objects/Y_TRAIN_{target}.txt',
+        f'./pickled_objects/Y_VAL_{target}.txt',
+        f'./pickled_objects/X_TEST_{target}.txt',
+        f'./pickled_objects/Y_TEST_{target}.txt',
+        f'./pickled_objects/x_boolmat_test_{target}.txt',
+        f'./pickled_objects/y_boolmat_test_{target}.txt',
+        f'./pickled_objects/x_boolmat_val_{target}.txt',
+        f'./pickled_objects/y_boolmat_val_{target}.txt',
+        f'./pickled_objects/no_feature_cols_{target}.txt',
+        f'./pickled_objects/features_{target}.txt',
+    ]
+
+    if all(os.path.isfile(f) for f in output_filenames):
+        print(f'[pickle_objects] Pickled files already exist.')
+        print(f'[pickle_objects] Will skip target={target}')
+        return
+
     (X_TRAIN, X_VAL, Y_TRAIN, Y_VAL, no_feature_cols,
      X_TEST, Y_TEST, x_boolmat_test, y_boolmat_test,
      x_boolmat_val, y_boolmat_val) = return_data(
@@ -457,22 +476,26 @@ def pickle_objects(target='MI', time_steps=14):
         pad=True, split=True, time_steps=time_steps
     )
 
-    output_pairs = [
-        (f'./pickled_objects/X_TRAIN_{target}.txt', X_TRAIN),
-        (f'./pickled_objects/X_VAL_{target}.txt', X_VAL),
-        (f'./pickled_objects/Y_TRAIN_{target}.txt', Y_TRAIN),
-        (f'./pickled_objects/Y_VAL_{target}.txt', Y_VAL),
-        (f'./pickled_objects/X_TEST_{target}.txt', X_TEST),
-        (f'./pickled_objects/Y_TEST_{target}.txt', Y_TEST),
-        (f'./pickled_objects/x_boolmat_test_{target}.txt', x_boolmat_test),
-        (f'./pickled_objects/y_boolmat_test_{target}.txt', y_boolmat_test),
-        (f'./pickled_objects/x_boolmat_val_{target}.txt', x_boolmat_val),
-        (f'./pickled_objects/y_boolmat_val_{target}.txt', y_boolmat_val),
-        (f'./pickled_objects/no_feature_cols_{target}.txt', no_feature_cols),
-        (f'./pickled_objects/features_{target}.txt', features),
+    output_data = [
+        X_TRAIN,
+        X_VAL,
+        Y_TRAIN,
+        Y_VAL,
+        X_TEST,
+        Y_TEST,
+        x_boolmat_test,
+        y_boolmat_test,
+        x_boolmat_val,
+        y_boolmat_val,
+        no_feature_cols,
+        features,
     ]
 
-    for fname, data in tqdm(output_pairs):
+    # ensure pickled_objects directory exists
+    if not os.path.isdir('pickled_objects'):
+        os.mkdir('pickled_objects')
+
+    for fname, data in zip(output_filenames, output_data):
         with open(fname, 'wb') as fd:
             pickle.dump(data, fd)
 
