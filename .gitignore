@@ -1,5 +1,9 @@
-.DS_Store
 __pycache__
 mimic_database
 pickled_objects
+saved_models
 logs
+.DS_Store
+*.csv.gz
+*.csv
+*.zip

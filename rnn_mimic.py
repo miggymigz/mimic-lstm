@@ -303,8 +303,8 @@ def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
     Keras model object
 
     """
-    print("time_steps:{0}|no_feature_cols:{1}".format(
-        time_steps, no_feature_cols))
+    print(f'time_steps:{time_steps}|no_feature_cols:{no_feature_cols}')
+
     input_layer = Input(shape=(time_steps, no_feature_cols))
     x = Attention(input_layer, time_steps)
     x = Masking(mask_value=0, input_shape=(time_steps, no_feature_cols))(x)
@@ -317,6 +317,7 @@ def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
 
     if output_summary:
         model.summary()
+
     return model
 
 
@@ -384,7 +385,7 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
     print(f'[train] Model successfully built')
 
     # init callbacks
-    log_dir = os.path.join('logs', f'{model_name}_{time}.log')
+    log_dir = os.path.join('logs', f'{model_name}_{time()}.log')
     tb_callback = TensorBoard(
         log_dir=log_dir,
         histogram_freq=0,
@@ -422,6 +423,10 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
         shuffle=True,
     )
 
+    # ensure saved_models directory exists
+    if not os.path.isdir('saved_models'):
+        os.mkdir('saved_models')
+
     saved_model_dir = os.path.join('saved_models', f'{model_name}.h5')
     model.save(saved_model_dir)
     print(f'[train] Trained model saved in: {saved_model_dir}')
@@ -453,23 +458,19 @@ def return_loaded_model(model_name="kaji_mach_0"):
     return loaded_model
 
 
-def pickle_objects(target='MI', time_steps=14):
+def pickle_objects(target='MI', time_steps=14, output_dir='pickled_objects'):
     print(f'[pickle_objects] START: target={target}')
 
-    output_filenames = [
-        os.path.join('pickled_objects', f'X_TRAIN_{target}.txt'),
-        os.path.join('pickled_objects', f'X_VAL_{target}.txt'),
-        os.path.join('pickled_objects', f'Y_TRAIN_{target}.txt'),
-        os.path.join('pickled_objects', f'Y_VAL_{target}.txt'),
-        os.path.join('pickled_objects', f'X_TEST_{target}.txt'),
-        os.path.join('pickled_objects', f'Y_TEST_{target}.txt'),
-        os.path.join('pickled_objects', f'x_boolmat_test_{target}.txt'),
-        os.path.join('pickled_objects', f'y_boolmat_test_{target}.txt'),
-        os.path.join('pickled_objects', f'x_boolmat_val_{target}.txt'),
-        os.path.join('pickled_objects', f'y_boolmat_val_{target}.txt'),
-        os.path.join('pickled_objects', f'no_feature_cols_{target}.txt'),
-        os.path.join('pickled_objects', f'features_{target}.txt'),
+    filenames = [
+        f'X_TRAIN_{target}.txt', f'X_VAL_{target}.txt',
+        f'Y_TRAIN_{target}.txt', f'Y_VAL_{target}.txt',
+        f'X_TEST_{target}.txt', f'Y_TEST_{target}.txt',
+        f'x_boolmat_test_{target}.txt', f'y_boolmat_test_{target}.txt',
+        f'x_boolmat_val_{target}.txt', f'y_boolmat_val_{target}.txt',
+        f'no_feature_cols_{target}.txt', f'features_{target}.txt',
     ]
+    output_filenames = [os.path.join(output_dir, name)
+                        for name in filenames]
 
     if all(os.path.isfile(f) for f in output_filenames):
         print(f'[pickle_objects] Pickled files already exist.')
@@ -489,18 +490,12 @@ def pickle_objects(target='MI', time_steps=14):
     )
 
     output_data = [
-        X_TRAIN,
-        X_VAL,
-        Y_TRAIN,
-        Y_VAL,
-        X_TEST,
-        Y_TEST,
-        x_boolmat_test,
-        y_boolmat_test,
-        x_boolmat_val,
-        y_boolmat_val,
-        no_feature_cols,
-        features,
+        X_TRAIN, X_VAL,
+        Y_TRAIN, Y_VAL,
+        X_TEST, Y_TEST,
+        x_boolmat_test, y_boolmat_test,
+        x_boolmat_val, y_boolmat_val,
+        no_feature_cols, features,
     ]
 
     # ensure pickled_objects directory exists
