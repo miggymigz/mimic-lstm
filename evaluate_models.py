@@ -60,11 +60,11 @@ def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
         # load saved model
         model = load_model(model_path)
 
+        # calculate model predictions (for performance evaluation)
         y_pred = model.predict(data['x_val'])
         y_pred = y_pred[~data['y_boolmat_val']]
         np.unique(y_pred)
         y_val = data['y_val'][~data['y_boolmat_val']]
-        y_pred_train = model.predict(data['x_train'])
 
         # output model performance statistics
         cm = confusion_matrix(y_val, np.around(y_pred))

@@ -112,7 +112,7 @@ def return_data(synth_data=False, balancer=True, target='MI',
         Y_TRAIN = np.vstack(y_train)
 
     else:
-        df = pd.read_csv(ROOT + FILE)
+        df = pd.read_csv(ROOT + FILE, low_memory=False)
 
         if target == 'MI':
             df[target] = ((df['troponin'] > 0.4) & (
@@ -217,8 +217,8 @@ def return_data(synth_data=False, balancer=True, target='MI',
         Y_TRAIN = Y_MATRIX[0:int(tt_split*Y_MATRIX.shape[0]), :]
         Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
 
-        X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                         :int(val_percentage*X_MATRIX.shape[0])]
-        Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                         :int(val_percentage*Y_MATRIX.shape[0])]
+        X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0]):int(val_percentage*X_MATRIX.shape[0])]
+        Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0]):int(val_percentage*Y_MATRIX.shape[0])]
         Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
         x_val_boolmat = x_bool_matrix[int(
@@ -306,7 +306,7 @@ def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
     print(f'time_steps:{time_steps}|no_feature_cols:{no_feature_cols}')
 
     input_layer = Input(shape=(time_steps, no_feature_cols))
-    x = Attention(input_layer, time_steps)
+    x, aw = Attention(input_layer, time_steps)
     x = Masking(mask_value=0, input_shape=(time_steps, no_feature_cols))(x)
     x = LSTM(256, return_sequences=True)(x)
     preds = TimeDistributed(Dense(1, activation="sigmoid"))(x)

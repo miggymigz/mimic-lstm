@@ -29,8 +29,11 @@ def get_activations(model, inputs, print_shape_only=False, layer_name=None, verb
     if layer_name is None:
         outputs = [layer.output for layer in model.layers]
     else:
-        outputs = [layer.output for layer in model.layers if layer.name == layer_name]  # all layer outputs
-    funcs = [K.function([inp] + [K.learning_phase()], [out]) for out in outputs]  # evaluation functions
+        # all layer outputs
+        outputs = [
+            layer.output for layer in model.layers if layer.name == layer_name]
+    funcs = [K.function([inp] + [K.learning_phase()], [out])
+             for out in outputs]  # evaluation functions
     layer_outputs = [func([inputs, 1.])[0] for func in funcs]
     for layer_activations in layer_outputs:
         activations.append(layer_activations)
@@ -41,7 +44,6 @@ def get_activations(model, inputs, print_shape_only=False, layer_name=None, verb
             else:
                 print(layer_activations)
     return activations
-
 
 
 def get_data_recurrent(n, time_steps, input_dim, attention_column=10):
@@ -67,7 +69,7 @@ def get_data_recurrent(n, time_steps, input_dim, attention_column=10):
 def attention_3d_block(inputs, TIME_STEPS):
     """
     inputs.shape = (batch_size, time_steps, input_dim)
-    """ 
+    """
     input_dim = int(inputs.shape[2])
     a = Permute((2, 1))(inputs)
     a = Reshape((input_dim, TIME_STEPS))(a)
@@ -75,13 +77,13 @@ def attention_3d_block(inputs, TIME_STEPS):
     a_probs = Permute((2, 1), name='attention_vec')(a)
     #output_attention_mul = merge([inputs, a_probs], name='attention_mul', mode='mul')
     output_attention_mul = multiply([inputs, a_probs])
-    return output_attention_mul
+    return output_attention_mul, a_probs
 
 
 def attention_3d_block_time_features(inputs, TIME_STEPS):
     """
     inputs.shape = (batch_size, time_steps, input_dim)
-    """ 
+    """
     input_dim = int(inputs.shape[2])
     a = Flatten()(inputs)
     a = Dense(TIME_STEPS*input_dim, activation='softmax')(a)
@@ -90,14 +92,16 @@ def attention_3d_block_time_features(inputs, TIME_STEPS):
     output_attention_mul = multiply([inputs, a_probs])
     return output_attention_mul
 
+
 def attention_spatial_block(inputs):
     """
     inputs.shape = (batch_size, time_steps, input_dim)
-    """ 
+    """
     input_dim = int(inputs.shape[2])
     a = Reshape((TIME_STEPS, input_dim))(inputs)
     a_probs = Dense(input_dim, activation='softmax', name='attention_vec')(a)
-    output_attention_mul = merge([inputs, a_probs], name='attention_mul', mode='mul')
+    output_attention_mul = merge(
+        [inputs, a_probs], name='attention_mul', mode='mul')
     return output_attention_mul
 
 
@@ -112,8 +116,3 @@ def model_attention_applied_before_lstm():
     output = Dense(1, activation='sigmoid')(attention_mul)
     model = Model(input=[inputs], output=output)
     return model
-
-
-
-
-
