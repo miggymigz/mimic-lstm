@@ -27,7 +27,7 @@ from sklearn.metrics import recall_score, precision_score
 from sklearn.model_selection import StratifiedKFold
 
 ROOT = os.path.join('mimic_database', 'mapped_elements')
-FILE = "CHARTEVENTS_preprocessed.csv"
+PREPROCESSED_FILE = os.path.join(ROOT, 'CHARTEVENTS_preprocessed.csv')
 
 ######################################
 ## MAIN ###
@@ -112,7 +112,7 @@ def return_data(synth_data=False, balancer=True, target='MI',
         Y_TRAIN = np.vstack(y_train)
 
     else:
-        df = pd.read_csv(ROOT + FILE, low_memory=False)
+        df = pd.read_csv(PREPROCESSED_FILE, low_memory=False)
 
         if target == 'MI':
             df[target] = ((df['troponin'] > 0.4) & (
@@ -195,16 +195,26 @@ def return_data(synth_data=False, balancer=True, target='MI',
         MATRIX = MATRIX.reshape(
             int(MATRIX.shape[0]/time_steps), time_steps, MATRIX.shape[1])
 
-        # note we are creating a second order bool matirx
+        # keep a copy of the original dataset
+        ORIG_MATRIX = np.copy(MATRIX)
+
+        # note we are creating a second order bool matrix
+        # create a mask which will be true for padding days
         bool_matrix = (~MATRIX.any(axis=2))
+
+        # turn padding values from zeroes to nan
         MATRIX[bool_matrix] = np.nan
-        MATRIX = PadSequences().ZScoreNormalize(MATRIX)
+
+        # normalize data and return the mean and std used
+        MATRIX, means, stds = PadSequences().ZScoreNormalize(MATRIX)
+
         # restore 3D shape to boolmatrix for consistency
         bool_matrix = np.isnan(MATRIX)
         MATRIX[bool_matrix] = pad_value
 
         permutation = np.random.permutation(MATRIX.shape[0])
         MATRIX = MATRIX[permutation]
+        ORIG_MATRIX = ORIG_MATRIX[permutation]
         bool_matrix = bool_matrix[permutation]
 
         X_MATRIX = MATRIX[:, :, 0:-1]
@@ -217,20 +227,23 @@ def return_data(synth_data=False, balancer=True, target='MI',
         Y_TRAIN = Y_MATRIX[0:int(tt_split*Y_MATRIX.shape[0]), :]
         Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
 
-        X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0]):int(val_percentage*X_MATRIX.shape[0])]
-        Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0]):int(val_percentage*Y_MATRIX.shape[0])]
+        val_start = int(tt_split * X_MATRIX.shape[0])
+        val_end = int(val_percentage * X_MATRIX.shape[0])
+        X_VAL = X_MATRIX[val_start:val_end]
+        Y_VAL = Y_MATRIX[val_start:val_end]
         Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
+        ORIG_VAL = ORIG_MATRIX[val_start:val_end]
 
-        x_val_boolmat = x_bool_matrix[int(
-            tt_split*x_bool_matrix.shape[0]):int(val_percentage*x_bool_matrix.shape[0])]
-        y_val_boolmat = y_bool_matrix[int(
-            tt_split*y_bool_matrix.shape[0]):int(val_percentage*y_bool_matrix.shape[0])]
+        x_val_boolmat = x_bool_matrix[val_start:val_end]
+        y_val_boolmat = y_bool_matrix[val_start:val_end]
         y_val_boolmat = y_val_boolmat.reshape(
             y_val_boolmat.shape[0], y_val_boolmat.shape[1], 1)
 
-        X_TEST = X_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
-        Y_TEST = Y_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
+        test_start_i = int(val_percentage*X_MATRIX.shape[0])
+        X_TEST = X_MATRIX[test_start_i::]
+        Y_TEST = Y_MATRIX[test_start_i::]
         Y_TEST = Y_TEST.reshape(Y_TEST.shape[0], Y_TEST.shape[1], 1)
+        ORIG_TEST = ORIG_MATRIX[test_start_i:]
 
         x_test_boolmat = x_bool_matrix[int(
             val_percentage*x_bool_matrix.shape[0])::]
@@ -280,7 +293,7 @@ def return_data(synth_data=False, balancer=True, target='MI',
     if split == True:
         return (X_TRAIN, X_VAL, Y_TRAIN, Y_VAL, no_feature_cols,
                 X_TEST, Y_TEST, x_test_boolmat, y_test_boolmat,
-                x_val_boolmat, y_val_boolmat)
+                x_val_boolmat, y_val_boolmat, means, stds, ORIG_VAL, ORIG_TEST)
 
     elif split == False:
         return (np.concatenate((X_TRAIN, X_VAL), axis=0),
@@ -306,7 +319,7 @@ def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
     print(f'time_steps:{time_steps}|no_feature_cols:{no_feature_cols}')
 
     input_layer = Input(shape=(time_steps, no_feature_cols))
-    x, aw = Attention(input_layer, time_steps)
+    x = Attention(input_layer, time_steps)
     x = Masking(mask_value=0, input_shape=(time_steps, no_feature_cols))(x)
     x = LSTM(256, return_sequences=True)(x)
     preds = TimeDistributed(Dense(1, activation="sigmoid"))(x)
@@ -468,6 +481,7 @@ def pickle_objects(target='MI', time_steps=14, output_dir='pickled_objects'):
         f'x_boolmat_test_{target}.txt', f'y_boolmat_test_{target}.txt',
         f'x_boolmat_val_{target}.txt', f'y_boolmat_val_{target}.txt',
         f'no_feature_cols_{target}.txt', f'features_{target}.txt',
+        f'norm_params_{target}.p', f'unnormalized_val_test_{target}.p',
     ]
     output_filenames = [os.path.join(output_dir, name)
                         for name in filenames]
@@ -479,7 +493,7 @@ def pickle_objects(target='MI', time_steps=14, output_dir='pickled_objects'):
 
     (X_TRAIN, X_VAL, Y_TRAIN, Y_VAL, no_feature_cols,
      X_TEST, Y_TEST, x_boolmat_test, y_boolmat_test,
-     x_boolmat_val, y_boolmat_val) = return_data(
+     x_boolmat_val, y_boolmat_val, means, stds, ORIG_VAL, ORIG_TEST) = return_data(
         balancer=True, target=target, pad=True,
         split=True, time_steps=time_steps
     )
@@ -496,6 +510,8 @@ def pickle_objects(target='MI', time_steps=14, output_dir='pickled_objects'):
         x_boolmat_test, y_boolmat_test,
         x_boolmat_val, y_boolmat_val,
         no_feature_cols, features,
+        {'means': means, 'stds': stds},
+        {'val': ORIG_VAL, 'test': ORIG_TEST},
     ]
 
     # ensure pickled_objects directory exists
