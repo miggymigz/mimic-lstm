@@ -13,7 +13,9 @@ RAW_FILE = os.path.join(ROOT, 'CHARTEVENTS.csv')
 def extract_units(chunksize=10_000_000, output_file='feature_units.p'):
     print(f'INFO - Processing csv with chunksize={chunksize}')
 
+    nan_set = set([np.nan])
     results = defaultdict(set)
+
     for i, chunk in enumerate(pd.read_csv(RAW_FILE, iterator=True, chunksize=chunksize)):
         print(f'INFO - Processing chunk#{i}')
 
@@ -29,9 +31,9 @@ def extract_units(chunksize=10_000_000, output_file='feature_units.p'):
         for key in agg.keys():
             values = set(agg[key])
             results[key].update(values)
-            results[key] = results[key].difference(set(np.nan))
+            results[key] = results[key].difference(nan_set)
 
-            if len(results[key]) != 1:
+            if len(results[key]) > 1:
                 raise AssertionError(
                     f'Units for ID="{key}" are {results[key]}')
 
