@@ -1,6 +1,8 @@
 from collections import defaultdict
+from tqdm import tqdm
 
 import fire
+import math
 import numpy as np
 import os
 import pandas as pd
@@ -8,11 +10,11 @@ import pickle
 
 ROOT = 'mimic_database'
 RAW_FILE = os.path.join(ROOT, 'CHARTEVENTS.csv')
+N_ROWS = 330_712_483
 
 
 def extract_units(chunksize=10_000_000, output_file='feature_units.p'):
-    print(f'INFO - Processing csv with chunksize={chunksize}')
-
+    total = math.ceil(N_ROWS / chunksize)
     nan_set = set([np.nan])
     results = defaultdict(set)
     iterator = pd.read_csv(
@@ -22,24 +24,31 @@ def extract_units(chunksize=10_000_000, output_file='feature_units.p'):
         low_memory=False
     )
 
-    for i, chunk in enumerate(iterator):
-        print(f'INFO - Processing chunk#{i}')
+    with tqdm(total=total, position=0) as pbar:
+        for i, chunk in enumerate(iterator):
+            # set tqdm progress description
+            pbar.set_description(f'Processing chunk#{i}')
 
-        # item ID is the feature ID
-        # valueuom is the unit used by the feature
-        columns = ['ITEMID', 'VALUEUOM']
+            # item ID is the feature ID
+            # valueuom is the unit used by the feature
+            columns = ['ITEMID', 'VALUEUOM']
 
-        # group df by item ID
-        # list all of the possible units of each item ID
-        print('INFO - Grouping items with same ITEMID...')
-        group = chunk[columns].groupby('ITEMID')
-        agg = group['VALUEUOM'].apply(list)
+            # group df by item ID
+            # list all of the possible units of each item ID
+            pbar.set_description(f'Grouping items for chunk#{i}')
+            group = chunk[columns].groupby('ITEMID')
+            agg = group['VALUEUOM'].apply(list)
+            keys = agg.keys()
 
-        print('INFO - Updating results from groups...')
-        for key in agg.keys():
-            values = set(agg[key])
-            results[key].update(values)
-            results[key] = results[key].difference(nan_set)
+            for j, key in enumerate(keys):
+                pbar.set_description(
+                    f'Updating results of chunk#{i}: {j+1}/{len(keys) + 1}')
+                values = set(agg[key])
+                results[key].update(values)
+                results[key] = results[key].difference(nan_set)
+
+            # update tqdm progress
+            pbar.update()
 
     # ensure output dir exists
     if not os.path.isdir('picked_objects'):
