@@ -33,10 +33,6 @@ def extract_units(chunksize=10_000_000, output_file='feature_units.p'):
             results[key].update(values)
             results[key] = results[key].difference(nan_set)
 
-            if len(results[key]) > 1:
-                raise AssertionError(
-                    f'Units for ID="{key}" are {results[key]}')
-
     # ensure output dir exists
     if not os.path.isdir('picked_objects'):
         os.mkdir('pickled_objects')
