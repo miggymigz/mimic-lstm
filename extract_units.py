@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 import fire
+import numpy as np
 import os
 import pandas as pd
 import pickle
@@ -10,8 +11,12 @@ RAW_FILE = os.path.join(ROOT, 'CHARTEVENTS.csv')
 
 
 def extract_units(chunksize=10_000_000, output_file='feature_units.p'):
+    print(f'INFO - Processing csv with chunksize={chunksize}')
+
     results = defaultdict(set)
-    for chunk in pd.read_csv(RAW_FILE, iterator=True, chunksize=chunksize):
+    for i, chunk in enumerate(pd.read_csv(RAW_FILE, iterator=True, chunksize=chunksize)):
+        print(f'INFO - Processing chunk#{i}')
+
         # item ID is the feature ID
         # valueuom is the unit used by the feature
         columns = ['ITEMID', 'VALUEUOM']
@@ -24,10 +29,11 @@ def extract_units(chunksize=10_000_000, output_file='feature_units.p'):
         for key in agg.keys():
             values = set(agg[key])
             results[key].update(values)
+            results[key] = results[key].difference(set(np.nan))
 
             if len(results[key]) != 1:
                 raise AssertionError(
-                    f'Units for ID="{key}" has many: {results[key]}')
+                    f'Units for ID="{key}" are {results[key]}')
 
     # ensure output dir exists
     if not os.path.isdir('picked_objects'):
