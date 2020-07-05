@@ -468,11 +468,10 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
 
     if predict:
         print('TARGET: {0}'.format(target))
-        Y_PRED = model.predict(X_VAL)
+        Y_PRED, _ = model.predict(X_VAL)
         Y_PRED = Y_PRED[~Y_BOOLMAT_VAL]
         np.unique(Y_PRED)
         Y_VAL = Y_VAL[~Y_BOOLMAT_VAL]
-        Y_PRED_TRAIN = model.predict(X_TRAIN)
         print('Confusion Matrix Validation')
         print(confusion_matrix(Y_VAL, np.around(Y_PRED)))
         print('Validation Accuracy')
