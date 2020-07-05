@@ -9,11 +9,10 @@ import pickle
 import numpy as np
 import pandas as pd
 from pad_sequences import PadSequences
-#from processing_utilities import PandasUtilities
 from attention_function import attention_3d_block as Attention
 
 from keras import backend as K
-from keras.models import Model, Input, load_model  # model_from_json
+from keras.models import Model, Input, load_model
 from keras.layers import Masking, Flatten, Embedding, Dense, LSTM, TimeDistributed
 from keras.callbacks import TensorBoard, ModelCheckpoint
 from keras.preprocessing.sequence import pad_sequences
@@ -23,7 +22,7 @@ from keras import optimizers
 from tf_model import Mimic3Lstm
 import tensorflow as tf
 
-#from sklearn.cross_validation import train_test_split
+# from sklearn.cross_validation import train_test_split
 from sklearn.preprocessing import RobustScaler, MinMaxScaler
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
 from sklearn.metrics import recall_score, precision_score
@@ -49,7 +48,7 @@ def get_synth_sequence(n_timesteps=14):
     Returns:
     -------
       X: npa, numpy array of features of shape (1,n_timesteps,2)
-      y: npa, numpy array of labels of shape (1,n_timesteps,1) 
+      y: npa, numpy array of labels of shape (1,n_timesteps,1)
 
     """
 
@@ -128,10 +127,11 @@ def return_data(synth_data=False, balancer=True, target='MI',
                 lambda x: 1 if x > 20 else 0)
             df['wbc_sepsis'] = df['WBCs'].apply(wbc_crit)
             df['temperature f_sepsis'] = df['temperature (F)'].apply(temp_crit)
-            df['sepsis_points'] = (df['hr_sepsis'] + df['respiratory rate_sepsis']
-                                   + df['wbc_sepsis'] + df['temperature f_sepsis'])
+            df['sepsis_points'] = (
+                df['hr_sepsis'] + df['respiratory rate_sepsis'] + df['wbc_sepsis'] + df['temperature f_sepsis'])
             df[target] = ((df['sepsis_points'] >= 2) & (
                 df['Infection'] == 1)).apply(lambda x: int(x))
+
             del df['hr_sepsis']
             del df['respiratory rate_sepsis']
             del df['wbc_sepsis']
@@ -203,12 +203,10 @@ def return_data(synth_data=False, balancer=True, target='MI',
 
         # note we are creating a second order bool matrix
         # create a mask which will be true for padding days
-        bool_matrix = (~MATRIX.any(axis=2))
-
         # turn padding values from zeroes to nan
-        MATRIX[bool_matrix] = np.nan
-
         # normalize data and return the mean and std used
+        bool_matrix = (~MATRIX.any(axis=2))
+        MATRIX[bool_matrix] = np.nan
         MATRIX, means, stds = PadSequences().ZScoreNormalize(MATRIX)
 
         # restore 3D shape to boolmatrix for consistency
@@ -217,8 +215,10 @@ def return_data(synth_data=False, balancer=True, target='MI',
 
         permutation = np.random.permutation(MATRIX.shape[0])
         MATRIX = MATRIX[permutation]
-        ORIG_MATRIX = ORIG_MATRIX[permutation]
         bool_matrix = bool_matrix[permutation]
+
+        # also reshuffle the original matrix
+        ORIG_MATRIX = ORIG_MATRIX[permutation]
 
         X_MATRIX = MATRIX[:, :, 0:-1]
         Y_MATRIX = MATRIX[:, :, -1]
@@ -230,23 +230,27 @@ def return_data(synth_data=False, balancer=True, target='MI',
         Y_TRAIN = Y_MATRIX[0:int(tt_split*Y_MATRIX.shape[0]), :]
         Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
 
-        val_start = int(tt_split * X_MATRIX.shape[0])
-        val_end = int(val_percentage * X_MATRIX.shape[0])
-        X_VAL = X_MATRIX[val_start:val_end]
-        Y_VAL = Y_MATRIX[val_start:val_end]
+        X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0]):int(val_percentage*X_MATRIX.shape[0])]
+        Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0]):int(val_percentage*Y_MATRIX.shape[0])]
         Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
-        ORIG_VAL = ORIG_MATRIX[val_start:val_end]
 
-        x_val_boolmat = x_bool_matrix[val_start:val_end]
-        y_val_boolmat = y_bool_matrix[val_start:val_end]
+        # save a copy of the unnormalized validation set
+        ORIG_VAL = ORIG_MATRIX[int(
+            tt_split*X_MATRIX.shape[0]):int(val_percentage*X_MATRIX.shape[0])]
+
+        x_val_boolmat = x_bool_matrix[int(
+            tt_split*x_bool_matrix.shape[0]):int(val_percentage*x_bool_matrix.shape[0])]
+        y_val_boolmat = y_bool_matrix[int(
+            tt_split*y_bool_matrix.shape[0]):int(val_percentage*y_bool_matrix.shape[0])]
         y_val_boolmat = y_val_boolmat.reshape(
             y_val_boolmat.shape[0], y_val_boolmat.shape[1], 1)
 
-        test_start_i = int(val_percentage*X_MATRIX.shape[0])
-        X_TEST = X_MATRIX[test_start_i::]
-        Y_TEST = Y_MATRIX[test_start_i::]
+        X_TEST = X_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
+        Y_TEST = Y_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
         Y_TEST = Y_TEST.reshape(Y_TEST.shape[0], Y_TEST.shape[1], 1)
-        ORIG_TEST = ORIG_MATRIX[test_start_i:]
+
+        # save a copy of the unnormalized test set
+        ORIG_TEST = ORIG_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
 
         x_test_boolmat = x_bool_matrix[int(
             val_percentage*x_bool_matrix.shape[0])::]
