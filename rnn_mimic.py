@@ -20,6 +20,9 @@ from keras.preprocessing.sequence import pad_sequences
 from keras import regularizers
 from keras import optimizers
 
+from tf_model import Mimic3Lstm
+import tensorflow as tf
+
 #from sklearn.cross_validation import train_test_split
 from sklearn.preprocessing import RobustScaler, MinMaxScaler
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
@@ -318,18 +321,31 @@ def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
     """
     print(f'time_steps:{time_steps}|no_feature_cols:{no_feature_cols}')
 
-    input_layer = Input(shape=(time_steps, no_feature_cols))
-    x = Attention(input_layer, time_steps)
-    x = Masking(mask_value=0, input_shape=(time_steps, no_feature_cols))(x)
-    x = LSTM(256, return_sequences=True)(x)
-    preds = TimeDistributed(Dense(1, activation="sigmoid"))(x)
-    model = Model(inputs=input_layer, outputs=preds)
+    # input_layer = Input(shape=(time_steps, no_feature_cols))
+    # x = Attention(input_layer, time_steps)
+    # x = Masking(mask_value=0, input_shape=(time_steps, no_feature_cols))(x)
+    # x = LSTM(256, return_sequences=True)(x)
+    # preds = TimeDistributed(Dense(1, activation="sigmoid"))(x)
+    # model = Model(inputs=input_layer, outputs=preds)
 
-    RMS = optimizers.RMSprop(lr=0.001, rho=0.9, epsilon=1e-08)
-    model.compile(optimizer=RMS, loss='binary_crossentropy', metrics=['acc'])
+    # RMS = optimizers.RMSprop(lr=0.001, rho=0.9, epsilon=1e-08)
+    # model.compile(optimizer=RMS, loss='binary_crossentropy', metrics=['acc'])
+
+    optimizer = tf.keras.optimizers.RMSprop(
+        learning_rate=0.001,
+        rho=0.0,
+        epsilon=1e-08,
+    )
+
+    model = Mimic3Lstm(no_feature_cols, time_steps)
+    model.compile(
+        optimizer=optimizer,
+        loss='binary_crossentropy',
+        metrics=['acc'],
+    )
 
     if output_summary:
-        model.summary()
+        model.model().summary()
 
     return model
 
@@ -549,6 +565,7 @@ if __name__ == "__main__":
     train(model_name='kaji_mach_final_no_mask_SEPSIS_pad14', epochs=17,
           synth_data=False, predict=True, target='SEPSIS', time_steps=14)
 
+    exit()
 
 ## REDUCE SAMPLE SIZES ##
 
