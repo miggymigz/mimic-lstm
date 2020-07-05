@@ -456,8 +456,10 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
     if not os.path.isdir('saved_models'):
         os.mkdir('saved_models')
 
-    saved_model_dir = os.path.join('saved_models', f'{model_name}.h5')
-    model.save(saved_model_dir)
+    # saved_model_dir = os.path.join('saved_models', f'{model_name}.h5')
+    # model.save(saved_model_dir)
+    saved_model_dir = os.path.join('saved_models', model_name)
+    tf.saved_model.save(model, saved_model_dir)
     print(f'[train] Trained model saved in: {saved_model_dir}')
 
     if predict:
