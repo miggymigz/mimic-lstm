@@ -30,6 +30,8 @@ from sklearn.model_selection import StratifiedKFold
 
 ROOT = os.path.join('mimic_database', 'mapped_elements')
 PREPROCESSED_FILE = os.path.join(ROOT, 'CHARTEVENTS_preprocessed.csv')
+PREPROCESSED_FILE_AGE = os.path.join(
+    ROOT, 'CHARTEVENTS_preprocessed_validages.csv')
 
 ######################################
 ## MAIN ###
@@ -114,7 +116,8 @@ def return_data(synth_data=False, balancer=True, target='MI',
         Y_TRAIN = np.vstack(y_train)
 
     else:
-        df = pd.read_csv(PREPROCESSED_FILE, low_memory=False)
+        # df = pd.read_csv(PREPROCESSED_FILE, low_memory=False)
+        df = pd.read_csv(PREPROCESSED_FILE_AGE, low_memory=False)
 
         if target == 'MI':
             df[target] = ((df['troponin'] > 0.4) & (
@@ -198,6 +201,11 @@ def return_data(synth_data=False, balancer=True, target='MI',
         MATRIX = MATRIX.reshape(
             int(MATRIX.shape[0]/time_steps), time_steps, MATRIX.shape[1])
 
+        # zero out padding days which have zero values anywhere except "meds" group
+        _meds_start = get_meds_start(target)
+        _mask = ~MATRIX[:, :, :_meds_start].any(axis=2)
+        MATRIX[_mask] = 0
+
         # keep a copy of the original dataset
         ORIG_MATRIX = np.copy(MATRIX)
 
@@ -230,8 +238,10 @@ def return_data(synth_data=False, balancer=True, target='MI',
         Y_TRAIN = Y_MATRIX[0:int(tt_split*Y_MATRIX.shape[0]), :]
         Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
 
-        X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0]):int(val_percentage*X_MATRIX.shape[0])]
-        Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0]):int(val_percentage*Y_MATRIX.shape[0])]
+        X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])
+                             :int(val_percentage*X_MATRIX.shape[0])]
+        Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])
+                             :int(val_percentage*Y_MATRIX.shape[0])]
         Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
         # save a copy of the unnormalized validation set
@@ -307,6 +317,19 @@ def return_data(synth_data=False, balancer=True, target='MI',
                 np.concatenate((Y_TRAIN, Y_VAL), axis=0), no_feature_cols)
 
 
+def get_meds_start(target):
+    if target == 'MI':
+        return 147
+
+    if target == 'SEPSIS':
+        return 151
+
+    if target == 'VANCOMYCIN':
+        return 151
+
+    raise AssertionError(f'Unsupported target: {target}')
+
+
 def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
     """
 
@@ -335,15 +358,15 @@ def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
     # RMS = optimizers.RMSprop(lr=0.001, rho=0.9, epsilon=1e-08)
     # model.compile(optimizer=RMS, loss='binary_crossentropy', metrics=['acc'])
 
-    optimizer = tf.keras.optimizers.RMSprop(
-        learning_rate=0.001,
-        rho=0.0,
-        epsilon=1e-08,
-    )
+    # optimizer = tf.keras.optimizers.RMSprop(
+    #     learning_rate=0.001,
+    #     rho=0.0,
+    #     epsilon=1e-08,
+    # )
 
     model = Mimic3Lstm(no_feature_cols, time_steps)
     model.compile(
-        optimizer=optimizer,
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
         loss='binary_crossentropy',
         metrics=['acc'],
     )

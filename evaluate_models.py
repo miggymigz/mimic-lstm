@@ -1,4 +1,3 @@
-from keras.models import load_model
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
 
 import fire
@@ -6,8 +5,9 @@ import numpy as np
 import os
 import pickle
 import sys
+import tensorflow as tf
 
-MODEL_NAME = 'kaji_mach_final_no_mask_{}_pad14.h5'
+MODEL_NAME = 'kaji_mach_final_no_mask_{}_pad14'
 TARGETS = set([
     'MI',
     'SEPSIS',
@@ -50,7 +50,7 @@ def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
         model_path = os.path.join(models_dir, model_name)
 
         # check for model existence
-        if not os.path.isfile(model_path):
+        if not os.path.isdir(model_path):
             print(f'[ERROR] {model_path} is not found')
             sys.exit(1)
 
@@ -58,10 +58,13 @@ def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
         data = get_data(target=target)
 
         # load saved model
-        model = load_model(model_path)
+        model = tf.saved_model.load(model_path)
+        infer = model.signatures['serving_default']
 
         # calculate model predictions (for performance evaluation)
-        y_pred = model.predict(data['x_val'])
+        x_val = tf.convert_to_tensor(data['x_val'], dtype=tf.float32)
+        results = infer(x_val)
+        y_pred = results['output_1']
         y_pred = y_pred[~data['y_boolmat_val']]
         np.unique(y_pred)
         y_val = data['y_val'][~data['y_boolmat_val']]
