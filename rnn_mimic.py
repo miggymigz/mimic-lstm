@@ -370,7 +370,7 @@ def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
 
     optimizer = tf.keras.optimizers.RMSprop(
         learning_rate=0.001,
-        rho=0.0,
+        rho=0.9,
         epsilon=1e-08,
     )
 
