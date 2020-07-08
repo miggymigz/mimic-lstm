@@ -371,10 +371,8 @@ def return_data(synth_data=False, balancer=True, target='MI',
         Y_TRAIN = Y_MATRIX[0:int(tt_split*Y_MATRIX.shape[0]), :]
         Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
 
-        X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])
-                             :int(val_percentage*X_MATRIX.shape[0])]
-        Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])
-                             :int(val_percentage*Y_MATRIX.shape[0])]
+        X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                         :int(val_percentage*X_MATRIX.shape[0])]
+        Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                         :int(val_percentage*Y_MATRIX.shape[0])]
         Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
         # save a copy of the unnormalized validation set
@@ -472,12 +470,19 @@ def aggregate_features(matrix, ids):
 
     matrix_T = matrix.transpose(0, 2, 1)
     mask = matrix.any(axis=2)
+    ignored_indices = []
 
     for i in range(matrix.shape[0]):
         day_length = sum(mask[i])
 
+        if day_length < 1 or day_length > 14:
+            print(f'ERROR: Index={i}, Day length={day_length}')
+            ignored_indices.append(i)
+            continue
+
         for fid, fmin_id, fmax_id, fstd_id in ids:
             features = matrix_T[i, fid, :day_length]
+
             fmin = np.min(features)
             fmax = np.max(features)
             fstd = np.std(features)
@@ -485,6 +490,10 @@ def aggregate_features(matrix, ids):
             matrix[i, :day_length, fmin_id] = fmin
             matrix[i, :day_length, fmax_id] = fmax
             matrix[i, :day_length, fstd_id] = fstd
+
+    # delete sample with invalid day length
+    if ignored_indices:
+        matrix = np.delete(matrix, ignored_indices, axis=0)
 
     return matrix
 
