@@ -1,4 +1,5 @@
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
+from tf_model import Mimic3Lstm
 
 import fire
 import numpy as np
@@ -13,6 +14,11 @@ TARGETS = set([
     'SEPSIS',
     'VANCOMYCIN',
 ])
+N_FEATURES = {
+    'MI': 221,
+    'SEPSIS': 225,
+    'VANCOMYCIN': 224,
+}
 PICKLED_OBJECTS = {
     'x_train': 'X_TRAIN_{}.txt',
     'y_train': 'Y_TRAIN_{}.txt',
@@ -47,10 +53,10 @@ def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
     # retrieve data for the specific target
     for target in TARGETS:
         model_name = MODEL_NAME.format(target)
-        model_path = os.path.join(models_dir, model_name)
+        model_path = os.path.join(models_dir, f'weights_{target}', model_name)
 
         # check for model existence
-        if not os.path.isdir(model_path):
+        if not os.path.isfile(f'{model_path}.index'):
             print(f'[ERROR] {model_path} is not found')
             sys.exit(1)
 
@@ -58,13 +64,12 @@ def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
         data = get_data(target=target)
 
         # load saved model
-        model = tf.saved_model.load(model_path)
-        infer = model.signatures['serving_default']
+        model = Mimic3Lstm(N_FEATURES[target])
+        model.load_weights(model_path)
 
         # calculate model predictions (for performance evaluation)
-        x_val = tf.convert_to_tensor(data['x_val'], dtype=tf.float32)
-        results = infer(x_val)
-        y_pred = results['output_1']
+        x_val = data['x_val'].astype(np.float32)
+        y_pred, _ = model(x_val)
         y_pred = y_pred[~data['y_boolmat_val']]
         np.unique(y_pred)
         y_val = data['y_val'][~data['y_boolmat_val']]

@@ -15,11 +15,11 @@ class Attention(tf.keras.layers.Layer):
         )
 
     def call(self, inputs):
-        a_probs = tf.transpose(inputs, perm=(0, 2, 1))
-        a_probs = self.dense(a_probs)
-        a_probs = tf.transpose(a_probs, perm=(0, 2, 1))
-        x = tf.multiply(inputs, a_probs)
-        return x, a_probs
+        a_weights = tf.transpose(inputs, perm=(0, 2, 1))
+        a_weights = self.dense(a_weights)
+        a_weights = tf.transpose(a_weights, perm=(0, 2, 1))
+        x = tf.multiply(inputs, a_weights)
+        return x, a_weights
 
 
 class Mimic3Lstm(tf.keras.Model):
@@ -50,11 +50,11 @@ class Mimic3Lstm(tf.keras.Model):
         )
 
     def call(self, inputs):
-        x, a_probs = self.attention(inputs)
+        x, a_weights = self.attention(inputs)
         x = self.masking(x)
         x = self.lstm(x)
         preds = self.distributed(x)
-        return preds, a_probs
+        return preds, a_weights
 
     def create_optimizer(self):
         optimizer_t = self.optimizer_t.lower()

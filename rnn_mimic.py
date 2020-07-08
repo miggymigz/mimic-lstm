@@ -43,6 +43,130 @@ ID_MEDS_START = {
     'SEPSIS': 151,
     'VANCOMYCIN': 151,
 }
+ID_AGG = {
+    'MI': [
+        # cbc
+        (7, 81, 116, 46),   # rbcs
+        (8, 82, 117, 47),   # wbcs
+        (28, 99, 134, 64),  # platelets
+        (24, 95, 130, 60),  # hemoglobin
+        (23, 94, 129, 59),  # hemocrit
+        (10, 84, 119, 49),  # atypical lymphocytes
+        (11, 85, 120, 50),  # bands
+        (12, 86, 121, 51),  # basophils
+        (20, 91, 126, 56),  # eosinophils
+        (27, 98, 133, 63),  # neutrophils
+        (25, 96, 131, 61),  # lymphocytes
+        (26, 97, 132, 62),  # monocytes
+        (29, 100, 135, 65),  # polymorphonuclear leukocytes
+        # vitals
+        (35, 106, 141, 71),  # temperature (f)
+        (22, 93, 128, 58),  # heart rate
+        (32, 103, 138, 68),  # respiratory rate
+        (34, 105, 140, 70),  # systolic
+        (19, 90, 125, 55),  # diastolic
+        (31, 102, 137, 67),  # pulse oximetry
+        # labs
+        (1, 75, 110, 40),   # hdl
+        (4, 78, 113, 43),   # ldl
+        (0, 74, 109, 39),   # bun
+        (2, 76, 111, 41),   # inr
+        (6, 80, 115, 45),   # ptt
+        (38, 108, 143, 73),  # triglycerides
+        (16, 89, 124, 54),  # creatinine
+        (21, 92, 127, 57),  # glucose
+        (33, 104, 139, 69),  # sodium
+        (30, 101, 136, 66),  # potassium_x
+        (15, 88, 123, 53),  # chloride
+        (3, 77, 112, 42),   # inspired o2 fraction
+        (14, 87, 122, 52),  # central venous pressure
+        (5, 79, 114, 44),   # peep set
+        (36, 107, 142, 72),  # tidal volume
+        (9, 83, 118, 48),   # anion gap
+    ],
+    'SEPSIS': [
+        # cbc
+        (7, 83, 119, 47),   # rbcs
+        (8, 84, 120, 48),   # wbcs
+        (28, 101, 137, 65),  # platelets
+        (24, 97, 133, 61),  # hemoglobin
+        (23, 96, 132, 60),  # hemocrit
+        (10, 86, 122, 50),  # atypical lymphocytes
+        (11, 87, 123, 51),  # bands
+        (12, 88, 124, 52),  # basophils
+        (20, 93, 129, 57),  # eosinophils
+        (27, 100, 136, 64),  # neutrophils
+        (25, 98, 134, 62),  # lymphocytes
+        (26, 99, 135, 63),  # monocytes
+        (29, 102, 138, 66),  # polymorphonuclear leukocytes
+        # vitals
+        (35, 108, 144, 72),  # temperature (f)
+        (22, 95, 131, 59),  # heart rate
+        (32, 105, 141, 69),  # respiratory rate
+        (34, 107, 143, 71),  # systolic
+        (19, 92, 128, 56),  # diastolic
+        (31, 104, 140, 68),  # pulse oximetry
+        (39, 111, 147, 75),  # troponin
+        # labs
+        (1, 77, 113, 41),   # hdl
+        (4, 80, 116, 44),   # ldl
+        (0, 76, 112, 40),   # bun
+        (2, 78, 114, 42),   # inr
+        (6, 82, 118, 46),   # ptt
+        (38, 110, 146, 74),  # triglycerides
+        (16, 91, 127, 55),  # creatinine
+        (21, 94, 130, 58),  # glucose
+        (33, 106, 142, 70),  # sodium
+        (30, 103, 139, 67),  # potassium_x
+        (15, 90, 126, 54),  # chloride
+        (3, 79, 115, 43),   # inspired o2 fraction
+        (14, 89, 125, 53),  # central venous pressure
+        (5, 81, 117, 45),   # peep set
+        (36, 109, 145, 73),  # tidal volume
+        (9, 85, 121, 49),   # anion gap
+    ],
+    'VANCOMYCIN': [
+        # cbc
+        (7, 83, 119, 47),   # rbcs
+        (8, 84, 120, 48),   # wbcs
+        (28, 101, 137, 65),  # platelets
+        (24, 97, 133, 61),  # hemoglobin
+        (23, 96, 132, 60),  # hemocrit
+        (10, 86, 122, 50),  # atypical lymphocytes
+        (11, 87, 123, 51),  # bands
+        (12, 88, 124, 52),  # basophils
+        (20, 93, 129, 57),  # eosinophils
+        (27, 100, 136, 64),  # neutrophils
+        (25, 98, 134, 62),  # lymphocytes
+        (26, 99, 135, 63),  # monocytes
+        (29, 102, 138, 66),  # polymorphonuclear leukocytes
+        # vitals
+        (35, 108, 144, 72),  # temperature (f)
+        (22, 95, 131, 59),  # heart rate
+        (32, 105, 141, 69),  # respiratory rate
+        (34, 107, 143, 71),  # systolic
+        (19, 92, 128, 56),  # diastolic
+        (31, 104, 140, 68),  # pulse oximetry
+        (39, 111, 147, 75),  # troponin
+        # labs
+        (1, 77, 113, 41),   # 'hdl
+        (4, 80, 116, 44),   # 'ldl
+        (0, 76, 112, 40),   # 'bun
+        (2, 78, 114, 42),   # 'inr
+        (6, 82, 118, 46),   # 'ptt
+        (38, 110, 146, 74),  # 'triglycerides
+        (16, 91, 127, 55),  # 'creatinine
+        (21, 94, 130, 58),  # 'glucose
+        (33, 106, 142, 70),  # 'sodium
+        (30, 103, 139, 67),  # 'potassium_x
+        (15, 90, 126, 54),  # 'chloride
+        (3, 79, 115, 43),   # 'inspired o2 fraction
+        (14, 89, 125, 53),  # 'central venous pressure
+        (5, 81, 117, 45),   # 'peep set
+        (36, 109, 145, 73),  # 'tidal volume
+        (9, 85, 121, 49),   # 'anion gap
+    ],
+}
 
 
 ######################################
@@ -337,6 +461,31 @@ def preprocess_matrix(matrix, target):
     _temp = matrix.transpose(0, 2, 1)[:, _id_age, :]
     matrix = matrix[~(_temp.max(axis=1) > 90)]
 
+    # aggregate features (min/max/std)
+    matrix = aggregate_features(matrix, ID_AGG[target])
+
+    return matrix
+
+
+def aggregate_features(matrix, ids):
+    assert len(matrix.shape) == 3
+
+    matrix_T = matrix.transpose(0, 2, 1)
+    mask = matrix.any(axis=2)
+
+    for i in range(matrix.shape[0]):
+        day_length = sum(mask[i])
+
+        for fid, fmin_id, fmax_id, fstd_id in ids:
+            features = matrix_T[i, fid, :day_length]
+            fmin = np.min(features)
+            fmax = np.max(features)
+            fstd = np.std(features)
+
+            matrix[i, :day_length, fmin_id] = fmin
+            matrix[i, :day_length, fmax_id] = fmax
+            matrix[i, :day_length, fstd_id] = fstd
+
     return matrix
 
 
@@ -467,7 +616,8 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
 
     # save model weights
     model_weights_dir = os.path.join('saved_models', f'weights_{target}')
-    model.save_weights(model_weights_dir, overwrite=True)
+    current_model_path = os.path.join(model_weights_dir, model_name)
+    model.save_weights(current_model_path, overwrite=True)
     print(f'{target}\'s model weights are saved in: {model_weights_dir}')
 
     # ensure saved_models directory exists
