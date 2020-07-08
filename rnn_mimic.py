@@ -645,7 +645,6 @@ def train_models(postprocessing=False):
         model_name='model_MI',
         epochs=13,
         evaluate=True,
-        postprocessing=postprocessing
     )
     tf.keras.backend.clear_session()
 
@@ -655,7 +654,6 @@ def train_models(postprocessing=False):
         model_name='model_SEPSIS',
         epochs=17,
         evaluate=True,
-        postprocessing=postprocessing,
     )
     tf.keras.backend.clear_session()
 
@@ -665,7 +663,6 @@ def train_models(postprocessing=False):
         model_name='model_VANCOMYCIN',
         epochs=14,
         evaluate=True,
-        postprocessing=postprocessing,
     )
     tf.keras.backend.clear_session()
 
