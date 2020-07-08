@@ -368,15 +368,9 @@ def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
     # RMS = optimizers.RMSprop(lr=0.001, rho=0.9, epsilon=1e-08)
     # model.compile(optimizer=RMS, loss='binary_crossentropy', metrics=['acc'])
 
-    optimizer = tf.keras.optimizers.RMSprop(
-        learning_rate=0.001,
-        rho=0.9,
-        epsilon=1e-08,
-    )
-
     model = Mimic3Lstm(no_feature_cols, time_steps)
     model.compile(
-        optimizer=optimizer,  # tf.keras.optimizers.Adam(learning_rate=0.001),
+        optimizer=model.create_optimizer(),
         loss='binary_crossentropy',
         metrics=['acc'],
     )
@@ -460,25 +454,7 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
         write_graph=True,
     )
 
-    # Make checkpoint dir and init checkpointer
-    # checkpoint_dir = "./saved_models/{0}".format(model_name)
-    # print(f'[train] Checkpoint directory: {checkpoint_dir}')
-
-    # if not os.path.exists(checkpoint_dir):
-    #     os.makedirs(checkpoint_dir)
-
-    # checkpointer = ModelCheckpoint(
-    #     filepath=checkpoint_dir+"/model.{epoch:02d}-{val_loss:.2f}.hdf5",
-    #     monitor='val_loss',
-    #     verbose=0,
-    #     save_best_only=True,
-    #     save_weights_only=False,
-    #     mode='auto',
-    #     period=1
-    # )
-
-    # fit
-    print(f'[train] Training model...')
+    # start model training
     model.fit(
         x=X_TRAIN,
         y=Y_TRAIN,
@@ -489,15 +465,20 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
         shuffle=True,
     )
 
+    # save model weights
+    model_weights_dir = os.path.join('saved_models', f'weights_{target}')
+    model.save_weights(model_weights_dir, overwrite=True)
+    print(f'{target}\'s model weights are saved in: {model_weights_dir}')
+
     # ensure saved_models directory exists
-    if not os.path.isdir('saved_models'):
-        os.mkdir('saved_models')
+    # if not os.path.isdir('saved_models'):
+    #     os.mkdir('saved_models')
 
     # saved_model_dir = os.path.join('saved_models', f'{model_name}.h5')
     # model.save(saved_model_dir)
-    saved_model_dir = os.path.join('saved_models', model_name)
-    tf.saved_model.save(model, saved_model_dir)
-    print(f'[train] Trained model saved in: {saved_model_dir}')
+    # saved_model_dir = os.path.join('saved_models', model_name)
+    # tf.saved_model.save(model, saved_model_dir)
+    # print(f'[train] Trained model saved in: {saved_model_dir}')
 
     if predict:
         print('TARGET: {0}'.format(target))

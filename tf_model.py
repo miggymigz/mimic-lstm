@@ -19,16 +19,17 @@ class Attention(tf.keras.layers.Layer):
         a_probs = self.dense(a_probs)
         a_probs = tf.transpose(a_probs, perm=(0, 2, 1))
         x = tf.multiply(inputs, a_probs)
-
         return x, a_probs
 
 
 class Mimic3Lstm(tf.keras.Model):
-    def __init__(self, n_features, time_steps=14):
+    def __init__(self, n_features, time_steps=14, learning_rate=0.001, optimizer='rms'):
         super(Mimic3Lstm, self).__init__()
 
-        self.time_steps = time_steps
         self.n_features = n_features
+        self.time_steps = time_steps
+        self.learning_rate = learning_rate
+        self.optimizer_t = optimizer
 
         self.attention = Attention(
             n_features,
@@ -53,8 +54,27 @@ class Mimic3Lstm(tf.keras.Model):
         x = self.masking(x)
         x = self.lstm(x)
         preds = self.distributed(x)
-
         return preds, a_probs
+
+    def create_optimizer(self):
+        optimizer_t = self.optimizer_t.lower()
+        if optimizer_t == 'rms':
+            return tf.keras.optimizers.RMSprop(
+                learning_rate=self.learning_rate,
+                rho=0.9,
+                epsilon=1e-08,
+            )
+
+        if optimizer_t == 'adam':
+            return tf.keras.optimizers.Adam(
+                learning_rate=self.learning_rate,
+                beta_1=0.9,
+                beta_2=0.999,
+                epsilon=1e-7,
+            )
+
+        raise AssertionError(
+            f'ERROR: Optimizer "{self.optimizer}" is not supported')
 
     def model(self):
         x = tf.keras.layers.Input(shape=(self.time_steps, self.n_features))
