@@ -335,7 +335,7 @@ def preprocess_matrix(matrix, target):
     # remove samples with age > 90
     _id_age = ID_AGE[target]
     _temp = matrix.transpose(0, 2, 1)[:, _id_age, :]
-    matrix = _temp[~(_temp.max(axis=1) > 90)]
+    matrix = matrix[~(_temp.max(axis=1) > 90)]
 
     return matrix
 
