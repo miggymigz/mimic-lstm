@@ -1,33 +1,18 @@
 ''' Recurrent Neural Network in Keras for use on the MIMIC-III '''
 
-import gc
-from time import time
-import os
-import math
-import pickle
-
-import numpy as np
-import pandas as pd
 from pad_sequences import PadSequences
-from attention_function import attention_3d_block as Attention
-
-from keras import backend as K
-from keras.models import Model, Input, load_model
-from keras.layers import Masking, Flatten, Embedding, Dense, LSTM, TimeDistributed
-from keras.callbacks import TensorBoard, ModelCheckpoint
-from keras.preprocessing.sequence import pad_sequences
-from keras import regularizers
-from keras import optimizers
-
+from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
+from time import time
 from tf_model import Mimic3Lstm
+
+import fire
+import numpy as np
+import os
+import pandas as pd
+import pickle
 import tensorflow as tf
 
-# from sklearn.cross_validation import train_test_split
-from sklearn.preprocessing import RobustScaler, MinMaxScaler
-from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
-from sklearn.metrics import recall_score, precision_score
-from sklearn.model_selection import StratifiedKFold
-
+TIMESTEPS = 14
 ROOT = os.path.join('mimic_database', 'mapped_elements')
 PREPROCESSED_FILE = os.path.join(ROOT, 'CHARTEVENTS_preprocessed.csv')
 
@@ -174,30 +159,6 @@ ID_AGG = {
 ######################################
 
 
-def get_synth_sequence(n_timesteps=14):
-    """
-
-    Returns a single synthetic data sequence of dim (bs,ts,feats)
-
-    Args:
-    ----
-      n_timesteps: int, number of timesteps to build model for
-
-    Returns:
-    -------
-      X: npa, numpy array of features of shape (1,n_timesteps,2)
-      y: npa, numpy array of labels of shape (1,n_timesteps,1)
-
-    """
-
-    X = np.array([[np.random.rand() for _ in range(n_timesteps)],
-                  [np.random.rand() for _ in range(n_timesteps)]])
-    X = X.reshape(1, n_timesteps, 2)
-    y = np.array([0 if x.sum() < 0.5 else 1 for x in X[0]])
-    y = y.reshape(1, n_timesteps, 1)
-    return X, y
-
-
 def wbc_crit(x):
     if (x > 12 or x < 4) and x != 0:
         return 1
@@ -212,10 +173,9 @@ def temp_crit(x):
         return 0
 
 
-def return_data(synth_data=False, balancer=True, target='MI',
+def return_data(balancer=True, target='MI',
                 return_cols=False, tt_split=0.7, val_percentage=0.8,
-                cross_val=False, mask=False, dataframe=False,
-                time_steps=14, split=True, pad=True):
+                cross_val=False, mask=False, dataframe=False, split=True, pad=True, postprocessing=False):
     """
 
     Returns synthetic or real data depending on parameter
@@ -230,7 +190,6 @@ def return_data(synth_data=False, balancer=True, target='MI',
         cross_val : parameter that returns entire matrix unsplit and unbalanced for cross val purposes
         mask : 24 hour mask, default is False
         dataframe : returns dataframe rather than numpy ndarray
-        time_steps : 14 by default, required for padding
         split : creates test train splits
         pad : by default is True, will pad to the time_step value
     Returns:
@@ -238,193 +197,186 @@ def return_data(synth_data=False, balancer=True, target='MI',
         Training and validation splits as well as the number of columns for use in RNN  
 
     """
+    df = pd.read_csv(PREPROCESSED_FILE, low_memory=False)
 
-    if synth_data:
-        no_feature_cols = 2
-        X_train = []
-        y_train = []
+    if target == 'MI':
+        df[target] = ((df['troponin'] > 0.4) & (
+            df['CKD'] == 0)).apply(lambda x: int(x))
 
-        for i in range(10000):
-            X, y = get_synth_sequence(n_timesteps=14)
-            X_train.append(X)
-            y_train.append(y)
-        X_TRAIN = np.vstack(X_train)
-        Y_TRAIN = np.vstack(y_train)
+    elif target == 'SEPSIS':
+        df['hr_sepsis'] = df['heart rate'].apply(
+            lambda x: 1 if x > 90 else 0)
+        df['respiratory rate_sepsis'] = df['respiratory rate'].apply(
+            lambda x: 1 if x > 20 else 0)
+        df['wbc_sepsis'] = df['WBCs'].apply(wbc_crit)
+        df['temperature f_sepsis'] = df['temperature (F)'].apply(temp_crit)
+        df['sepsis_points'] = (
+            df['hr_sepsis'] + df['respiratory rate_sepsis'] + df['wbc_sepsis'] + df['temperature f_sepsis'])
+        df[target] = ((df['sepsis_points'] >= 2) & (
+            df['Infection'] == 1)).apply(lambda x: int(x))
 
-    else:
-        df = pd.read_csv(PREPROCESSED_FILE, low_memory=False)
+        del df['hr_sepsis']
+        del df['respiratory rate_sepsis']
+        del df['wbc_sepsis']
+        del df['temperature f_sepsis']
+        del df['sepsis_points']
+        del df['Infection']
 
-        if target == 'MI':
-            df[target] = ((df['troponin'] > 0.4) & (
-                df['CKD'] == 0)).apply(lambda x: int(x))
+    elif target == 'PE':
+        df['blood_thinner'] = (df['heparin'] + df['enoxaparin'] +
+                               df['fondaparinux']).apply(lambda x: 1 if x >= 1 else 0)
+        df[target] = (df['blood_thinner'] & df['ct_angio'])
+        del df['blood_thinner']
 
-        elif target == 'SEPSIS':
-            df['hr_sepsis'] = df['heart rate'].apply(
-                lambda x: 1 if x > 90 else 0)
-            df['respiratory rate_sepsis'] = df['respiratory rate'].apply(
-                lambda x: 1 if x > 20 else 0)
-            df['wbc_sepsis'] = df['WBCs'].apply(wbc_crit)
-            df['temperature f_sepsis'] = df['temperature (F)'].apply(temp_crit)
-            df['sepsis_points'] = (
-                df['hr_sepsis'] + df['respiratory rate_sepsis'] + df['wbc_sepsis'] + df['temperature f_sepsis'])
-            df[target] = ((df['sepsis_points'] >= 2) & (
-                df['Infection'] == 1)).apply(lambda x: int(x))
+    elif target == 'VANCOMYCIN':
+        df['VANCOMYCIN'] = df['vancomycin'].apply(
+            lambda x: 1 if x > 0 else 0)
+        del df['vancomycin']
 
-            del df['hr_sepsis']
-            del df['respiratory rate_sepsis']
-            del df['wbc_sepsis']
-            del df['temperature f_sepsis']
-            del df['sepsis_points']
-            del df['Infection']
+    df = df.select_dtypes(exclude=['object'])
 
-        elif target == 'PE':
-            df['blood_thinner'] = (df['heparin'] + df['enoxaparin'] +
-                                   df['fondaparinux']).apply(lambda x: 1 if x >= 1 else 0)
-            df[target] = (df['blood_thinner'] & df['ct_angio'])
-            del df['blood_thinner']
+    if pad:
+        pad_value = 0
+        df = PadSequences().pad(df, 1, TIMESTEPS, pad_value=pad_value)
+        print('There are {0} rows in the df after padding'.format(len(df)))
 
-        elif target == 'VANCOMYCIN':
-            df['VANCOMYCIN'] = df['vancomycin'].apply(
-                lambda x: 1 if x > 0 else 0)
-            del df['vancomycin']
+    COLUMNS = list(df.columns)
 
-        df = df.select_dtypes(exclude=['object'])
+    if target == 'MI':
+        toss = ['ct_angio', 'troponin', 'troponin_std',
+                'troponin_min', 'troponin_max', 'Infection', 'CKD']
+        COLUMNS = [i for i in COLUMNS if i not in toss]
+    elif target == 'SEPSIS':
+        toss = ['ct_angio', 'Infection', 'CKD']
+        COLUMNS = [i for i in COLUMNS if i not in toss]
+    elif target == 'PE':
+        toss = ['ct_angio', 'heparin', 'heparin_std', 'heparin_min',
+                'heparin_max', 'enoxaparin', 'enoxaparin_std',
+                'enoxaparin_min', 'enoxaparin_max', 'fondaparinux',
+                'fondaparinux_std', 'fondaparinux_min', 'fondaparinux_max',
+                'Infection', 'CKD']
+        COLUMNS = [i for i in COLUMNS if i not in toss]
+    elif target == 'VANCOMYCIN':
+        toss = ['ct_angio', 'Infection', 'CKD']
+        COLUMNS = [i for i in COLUMNS if i not in toss]
 
-        if pad:
-            pad_value = 0
-            df = PadSequences().pad(df, 1, time_steps, pad_value=pad_value)
-            print('There are {0} rows in the df after padding'.format(len(df)))
+    COLUMNS.remove(target)
 
-        COLUMNS = list(df.columns)
+    if 'HADM_ID' in COLUMNS:
+        COLUMNS.remove('HADM_ID')
+    if 'SUBJECT_ID' in COLUMNS:
+        COLUMNS.remove('SUBJECT_ID')
+    if 'YOB' in COLUMNS:
+        COLUMNS.remove('YOB')
+    if 'ADMITYEAR' in COLUMNS:
+        COLUMNS.remove('ADMITYEAR')
 
-        if target == 'MI':
-            toss = ['ct_angio', 'troponin', 'troponin_std',
-                    'troponin_min', 'troponin_max', 'Infection', 'CKD']
-            COLUMNS = [i for i in COLUMNS if i not in toss]
-        elif target == 'SEPSIS':
-            toss = ['ct_angio', 'Infection', 'CKD']
-            COLUMNS = [i for i in COLUMNS if i not in toss]
-        elif target == 'PE':
-            toss = ['ct_angio', 'heparin', 'heparin_std', 'heparin_min',
-                    'heparin_max', 'enoxaparin', 'enoxaparin_std',
-                    'enoxaparin_min', 'enoxaparin_max', 'fondaparinux',
-                    'fondaparinux_std', 'fondaparinux_min', 'fondaparinux_max',
-                    'Infection', 'CKD']
-            COLUMNS = [i for i in COLUMNS if i not in toss]
-        elif target == 'VANCOMYCIN':
-            toss = ['ct_angio', 'Infection', 'CKD']
-            COLUMNS = [i for i in COLUMNS if i not in toss]
+    if return_cols:
+        return COLUMNS
 
-        COLUMNS.remove(target)
+    if dataframe:
+        return (df[COLUMNS+[target, "HADM_ID"]])
 
-        if 'HADM_ID' in COLUMNS:
-            COLUMNS.remove('HADM_ID')
-        if 'SUBJECT_ID' in COLUMNS:
-            COLUMNS.remove('SUBJECT_ID')
-        if 'YOB' in COLUMNS:
-            COLUMNS.remove('YOB')
-        if 'ADMITYEAR' in COLUMNS:
-            COLUMNS.remove('ADMITYEAR')
+    MATRIX = df[COLUMNS+[target]].values
+    MATRIX = MATRIX.reshape(
+        int(MATRIX.shape[0]/TIMESTEPS),
+        TIMESTEPS,
+        MATRIX.shape[1]
+    )
 
-        if return_cols:
-            return COLUMNS
-
-        if dataframe:
-            return (df[COLUMNS+[target, "HADM_ID"]])
-
-        MATRIX = df[COLUMNS+[target]].values
-        MATRIX = MATRIX.reshape(
-            int(MATRIX.shape[0]/time_steps), time_steps, MATRIX.shape[1])
-
-        # add my own preprocessing steps
+    # add my own preprocessing steps
+    if postprocessing:
         MATRIX = preprocess_matrix(MATRIX, target)
 
-        # keep a copy of the original dataset
-        ORIG_MATRIX = np.copy(MATRIX)
+    # keep a copy of the original dataset
+    ORIG_MATRIX = np.copy(MATRIX)
 
-        # note we are creating a second order bool matrix
-        # create a mask which will be true for padding days
-        # turn padding values from zeroes to nan
-        # normalize data and return the mean and std used
-        bool_matrix = (~MATRIX.any(axis=2))
-        MATRIX[bool_matrix] = np.nan
-        MATRIX, means, stds = PadSequences().ZScoreNormalize(MATRIX)
+    # note we are creating a second order bool matrix
+    # create a mask which will be true for padding days
+    # turn padding values from zeroes to nan
+    # normalize data and return the mean and std used
+    bool_matrix = (~MATRIX.any(axis=2))
+    MATRIX[bool_matrix] = np.nan
+    MATRIX, means, stds = PadSequences().ZScoreNormalize(MATRIX)
 
-        # restore 3D shape to boolmatrix for consistency
-        bool_matrix = np.isnan(MATRIX)
-        MATRIX[bool_matrix] = pad_value
+    # restore 3D shape to boolmatrix for consistency
+    bool_matrix = np.isnan(MATRIX)
+    MATRIX[bool_matrix] = pad_value
 
-        permutation = np.random.permutation(MATRIX.shape[0])
-        MATRIX = MATRIX[permutation]
-        bool_matrix = bool_matrix[permutation]
+    permutation = np.random.permutation(MATRIX.shape[0])
+    MATRIX = MATRIX[permutation]
+    bool_matrix = bool_matrix[permutation]
 
-        # also reshuffle the original matrix
-        ORIG_MATRIX = ORIG_MATRIX[permutation]
+    # also reshuffle the original matrix
+    ORIG_MATRIX = ORIG_MATRIX[permutation]
 
-        X_MATRIX = MATRIX[:, :, 0:-1]
-        Y_MATRIX = MATRIX[:, :, -1]
+    X_MATRIX = MATRIX[:, :, 0:-1]
+    Y_MATRIX = MATRIX[:, :, -1]
 
-        x_bool_matrix = bool_matrix[:, :, 0:-1]
-        y_bool_matrix = bool_matrix[:, :, -1]
+    x_bool_matrix = bool_matrix[:, :, 0:-1]
+    y_bool_matrix = bool_matrix[:, :, -1]
 
-        X_TRAIN = X_MATRIX[0:int(tt_split*X_MATRIX.shape[0]), :, :]
-        Y_TRAIN = Y_MATRIX[0:int(tt_split*Y_MATRIX.shape[0]), :]
-        Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
+    X_TRAIN = X_MATRIX[0:int(tt_split*X_MATRIX.shape[0]), :, :]
+    Y_TRAIN = Y_MATRIX[0:int(tt_split*Y_MATRIX.shape[0]), :]
+    Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
 
-        X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                         :int(val_percentage*X_MATRIX.shape[0])]
-        Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                         :int(val_percentage*Y_MATRIX.shape[0])]
-        Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
+    # save a copy of the unnormalized training set
+    ORIG_TRAIN = ORIG_MATRIX[:int(tt_split*X_MATRIX.shape[0])]
 
-        # save a copy of the unnormalized validation set
-        ORIG_VAL = ORIG_MATRIX[int(
-            tt_split*X_MATRIX.shape[0]):int(val_percentage*X_MATRIX.shape[0])]
+    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                     :int(val_percentage*X_MATRIX.shape[0])]
+    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                     :int(val_percentage*Y_MATRIX.shape[0])]
+    Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
-        x_val_boolmat = x_bool_matrix[int(
-            tt_split*x_bool_matrix.shape[0]):int(val_percentage*x_bool_matrix.shape[0])]
-        y_val_boolmat = y_bool_matrix[int(
-            tt_split*y_bool_matrix.shape[0]):int(val_percentage*y_bool_matrix.shape[0])]
-        y_val_boolmat = y_val_boolmat.reshape(
-            y_val_boolmat.shape[0], y_val_boolmat.shape[1], 1)
+    # save a copy of the unnormalized validation set
+    ORIG_VAL = ORIG_MATRIX[int(
+        tt_split*X_MATRIX.shape[0]):int(val_percentage*X_MATRIX.shape[0])]
 
-        X_TEST = X_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
-        Y_TEST = Y_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
-        Y_TEST = Y_TEST.reshape(Y_TEST.shape[0], Y_TEST.shape[1], 1)
+    x_val_boolmat = x_bool_matrix[int(
+        tt_split*x_bool_matrix.shape[0]):int(val_percentage*x_bool_matrix.shape[0])]
+    y_val_boolmat = y_bool_matrix[int(
+        tt_split*y_bool_matrix.shape[0]):int(val_percentage*y_bool_matrix.shape[0])]
+    y_val_boolmat = y_val_boolmat.reshape(
+        y_val_boolmat.shape[0], y_val_boolmat.shape[1], 1)
 
-        # save a copy of the unnormalized test set
-        ORIG_TEST = ORIG_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
+    X_TEST = X_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
+    Y_TEST = Y_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
+    Y_TEST = Y_TEST.reshape(Y_TEST.shape[0], Y_TEST.shape[1], 1)
 
-        x_test_boolmat = x_bool_matrix[int(
-            val_percentage*x_bool_matrix.shape[0])::]
-        y_test_boolmat = y_bool_matrix[int(
-            val_percentage*y_bool_matrix.shape[0])::]
-        y_test_boolmat = y_test_boolmat.reshape(
-            y_test_boolmat.shape[0], y_test_boolmat.shape[1], 1)
+    # save a copy of the unnormalized test set
+    ORIG_TEST = ORIG_MATRIX[int(val_percentage*X_MATRIX.shape[0])::]
 
-        X_TEST[x_test_boolmat] = pad_value
-        Y_TEST[y_test_boolmat] = pad_value
+    x_test_boolmat = x_bool_matrix[int(
+        val_percentage*x_bool_matrix.shape[0])::]
+    y_test_boolmat = y_bool_matrix[int(
+        val_percentage*y_bool_matrix.shape[0])::]
+    y_test_boolmat = y_test_boolmat.reshape(
+        y_test_boolmat.shape[0], y_test_boolmat.shape[1], 1)
 
-        if balancer:
-            TRAIN = np.concatenate([X_TRAIN, Y_TRAIN], axis=2)
-            print(np.where((TRAIN[:, :, -1] == 1).any(axis=1))[0])
-            pos_ind = np.unique(
-                np.where((TRAIN[:, :, -1] == 1).any(axis=1))[0])
-            print(pos_ind)
-            np.random.shuffle(pos_ind)
-            neg_ind = np.unique(
-                np.where(~(TRAIN[:, :, -1] == 1).any(axis=1))[0])
-            print(neg_ind)
-            np.random.shuffle(neg_ind)
-            length = min(pos_ind.shape[0], neg_ind.shape[0])
-            total_ind = np.hstack([pos_ind[0:length], neg_ind[0:length]])
-            np.random.shuffle(total_ind)
+    X_TEST[x_test_boolmat] = pad_value
+    Y_TEST[y_test_boolmat] = pad_value
+
+    if balancer:
+        TRAIN = np.concatenate([X_TRAIN, Y_TRAIN], axis=2)
+        print(np.where((TRAIN[:, :, -1] == 1).any(axis=1))[0])
+        pos_ind = np.unique(
+            np.where((TRAIN[:, :, -1] == 1).any(axis=1))[0])
+        print(pos_ind)
+        np.random.shuffle(pos_ind)
+        neg_ind = np.unique(
+            np.where(~(TRAIN[:, :, -1] == 1).any(axis=1))[0])
+        print(neg_ind)
+        np.random.shuffle(neg_ind)
+        length = min(pos_ind.shape[0], neg_ind.shape[0])
+        total_ind = np.hstack([pos_ind[0:length], neg_ind[0:length]])
+        np.random.shuffle(total_ind)
+        ind = total_ind
+        if target == 'MI':
+            ind = pos_ind
+        else:
             ind = total_ind
-            if target == 'MI':
-                ind = pos_ind
-            else:
-                ind = total_ind
-            X_TRAIN = TRAIN[ind, :, 0:-1]
-            Y_TRAIN = TRAIN[ind, :, -1]
-            Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
+        X_TRAIN = TRAIN[ind, :, 0:-1]
+        Y_TRAIN = TRAIN[ind, :, -1]
+        Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
 
     no_feature_cols = X_TRAIN.shape[2]
 
@@ -439,9 +391,19 @@ def return_data(synth_data=False, balancer=True, target='MI',
         return (MATRIX, no_feature_cols)
 
     if split == True:
+        norm_params = {
+            'means': means,
+            'stds': stds,
+        }
+        orig_data = {
+            'train': ORIG_TRAIN,
+            'val': ORIG_VAL,
+            'test': ORIG_TEST,
+        }
+
         return (X_TRAIN, X_VAL, Y_TRAIN, Y_VAL, no_feature_cols,
                 X_TEST, Y_TEST, x_test_boolmat, y_test_boolmat,
-                x_val_boolmat, y_val_boolmat, means, stds, ORIG_VAL, ORIG_TEST)
+                x_val_boolmat, y_val_boolmat, norm_params, orig_data)
 
     elif split == False:
         return (np.concatenate((X_TRAIN, X_VAL), axis=0),
@@ -498,50 +460,13 @@ def aggregate_features(matrix, ids):
     return matrix
 
 
-def build_model(no_feature_cols=None, time_steps=7, output_summary=False):
-    """
-
-    Assembles RNN with input from return_data function
-
-    Args:
-    ----
-    no_feature_cols : The number of features being used AKA matrix rank
-    time_steps : The number of days in a time block
-    output_summary : Defaults to False on returning model summary
-
-    Returns:
-    ------- 
-    Keras model object
-
-    """
-    print(f'time_steps:{time_steps}|no_feature_cols:{no_feature_cols}')
-
-    # input_layer = Input(shape=(time_steps, no_feature_cols))
-    # x = Attention(input_layer, time_steps)
-    # x = Masking(mask_value=0, input_shape=(time_steps, no_feature_cols))(x)
-    # x = LSTM(256, return_sequences=True)(x)
-    # preds = TimeDistributed(Dense(1, activation="sigmoid"))(x)
-    # model = Model(inputs=input_layer, outputs=preds)
-
-    # RMS = optimizers.RMSprop(lr=0.001, rho=0.9, epsilon=1e-08)
-    # model.compile(optimizer=RMS, loss='binary_crossentropy', metrics=['acc'])
-
-    model = Mimic3Lstm(no_feature_cols, time_steps)
-    model.compile(
-        optimizer=model.create_optimizer(),
-        loss='binary_crossentropy',
-        metrics=['acc'],
-    )
-
-    if output_summary:
-        model.model().summary()
-
-    return model
-
-
-def train(model_name="kaji_mach_0", synth_data=False, target='MI',
-          balancer=True, predict=False, return_model=False,
-          n_percentage=1.0, time_steps=14, epochs=10):
+def train(
+    target='MI',
+    model_name="kaji_mach_0",
+    balancer=True,
+    evaluate=False,
+    epochs=10,
+):
     """
 
     Use Keras model.fit using parameter inputs
@@ -594,23 +519,19 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
     no_feature_cols = pickle.load(f)
     f.close()
 
-    X_TRAIN = X_TRAIN[0:int(n_percentage*X_TRAIN.shape[0])]
-    Y_TRAIN = Y_TRAIN[0:int(n_percentage*Y_TRAIN.shape[0])]
+    X_TRAIN = X_TRAIN[0:int(X_TRAIN.shape[0])]
+    Y_TRAIN = Y_TRAIN[0:int(Y_TRAIN.shape[0])]
 
     # build model
-    model = build_model(no_feature_cols=no_feature_cols, output_summary=True,
-                        time_steps=time_steps)
-    print(f'[train] Model successfully built')
-
-    # init callbacks
-    log_dir = os.path.join('logs', f'{model_name}_{time()}.log')
-    tb_callback = TensorBoard(
-        log_dir=log_dir,
-        histogram_freq=0,
-        write_grads=False,
-        write_images=True,
-        write_graph=True,
+    model = Mimic3Lstm(no_feature_cols)
+    model.compile(
+        optimizer=model.create_optimizer(),
+        loss='binary_crossentropy',
+        metrics=['acc'],
     )
+
+    # print model architecture
+    model.model().summary()
 
     # start model training
     model.fit(
@@ -618,7 +539,6 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
         y=Y_TRAIN,
         batch_size=16,
         epochs=epochs,
-        callbacks=[tb_callback],  # , checkpointer],
         validation_data=(X_VAL, Y_VAL),
         shuffle=True,
     )
@@ -629,21 +549,10 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
     model.save_weights(current_model_path, overwrite=True)
     print(f'{target}\'s model weights are saved in: {model_weights_dir}')
 
-    # ensure saved_models directory exists
-    # if not os.path.isdir('saved_models'):
-    #     os.mkdir('saved_models')
-
-    # saved_model_dir = os.path.join('saved_models', f'{model_name}.h5')
-    # model.save(saved_model_dir)
-    # saved_model_dir = os.path.join('saved_models', model_name)
-    # tf.saved_model.save(model, saved_model_dir)
-    # print(f'[train] Trained model saved in: {saved_model_dir}')
-
-    if predict:
+    if evaluate:
         print('TARGET: {0}'.format(target))
         Y_PRED, _ = model.predict(X_VAL)
         Y_PRED = Y_PRED[~Y_BOOLMAT_VAL]
-        np.unique(Y_PRED)
         Y_VAL = Y_VAL[~Y_BOOLMAT_VAL]
         print('Confusion Matrix Validation')
         print(confusion_matrix(Y_VAL, np.around(Y_PRED)))
@@ -654,18 +563,8 @@ def train(model_name="kaji_mach_0", synth_data=False, target='MI',
         print('CLASSIFICATION REPORT VAL')
         print(classification_report(Y_VAL, np.around(Y_PRED)))
 
-    if return_model:
-        return model
 
-
-def return_loaded_model(model_name="kaji_mach_0"):
-    model_dir = os.path.join('saved_models', f'{model_name}.h5')
-    loaded_model = load_model(model_dir)
-
-    return loaded_model
-
-
-def pickle_objects(target='MI', time_steps=14, output_dir='pickled_objects'):
+def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=False):
     print(f'[pickle_objects] START: target={target}')
 
     filenames = [
@@ -675,7 +574,7 @@ def pickle_objects(target='MI', time_steps=14, output_dir='pickled_objects'):
         f'x_boolmat_test_{target}.txt', f'y_boolmat_test_{target}.txt',
         f'x_boolmat_val_{target}.txt', f'y_boolmat_val_{target}.txt',
         f'no_feature_cols_{target}.txt', f'features_{target}.txt',
-        f'norm_params_{target}.p', f'unnormalized_val_test_{target}.p',
+        f'norm_params_{target}.p', f'orig_data_{target}.p',
     ]
     output_filenames = [os.path.join(output_dir, name)
                         for name in filenames]
@@ -687,14 +586,14 @@ def pickle_objects(target='MI', time_steps=14, output_dir='pickled_objects'):
 
     (X_TRAIN, X_VAL, Y_TRAIN, Y_VAL, no_feature_cols,
      X_TEST, Y_TEST, x_boolmat_test, y_boolmat_test,
-     x_boolmat_val, y_boolmat_val, means, stds, ORIG_VAL, ORIG_TEST) = return_data(
+     x_boolmat_val, y_boolmat_val, norm_params, orig_data) = return_data(
         balancer=True, target=target, pad=True,
-        split=True, time_steps=time_steps
+        split=True, postprocessing=postprocessing
     )
 
     features = return_data(
-        return_cols=True, synth_data=False, target=target,
-        pad=True, split=True, time_steps=time_steps
+        return_cols=True, target=target,
+        pad=True, split=True, postprocessing=postprocessing
     )
 
     output_data = [
@@ -704,8 +603,7 @@ def pickle_objects(target='MI', time_steps=14, output_dir='pickled_objects'):
         x_boolmat_test, y_boolmat_test,
         x_boolmat_val, y_boolmat_val,
         no_feature_cols, features,
-        {'means': means, 'stds': stds},
-        {'val': ORIG_VAL, 'test': ORIG_TEST},
+        norm_params, orig_data,
     ]
 
     # ensure pickled_objects directory exists
@@ -719,140 +617,58 @@ def pickle_objects(target='MI', time_steps=14, output_dir='pickled_objects'):
     print(f'[pickle_objects] DONE: target={target}')
 
 
-if __name__ == "__main__":
+def train_models(postprocessing=False):
+    # prepare dataset for MI model
+    pickle_objects(
+        target='MI',
+        postprocessing=postprocessing,
+    )
+    tf.keras.backend.clear_session()
 
-    pickle_objects(target='MI', time_steps=14)
-    K.clear_session()
-    pickle_objects(target='SEPSIS', time_steps=14)
-    K.clear_session()
-    pickle_objects(target='VANCOMYCIN', time_steps=14)
+    # prepare dataset for SEPSIS model
+    pickle_objects(
+        target='SEPSIS',
+        postprocessing=postprocessing,
+    )
+    tf.keras.backend.clear_session()
 
-## BIG THREE ##
+    # prepare dataset for VANCOMYCIN model
+    pickle_objects(
+        target='VANCOMYCIN',
+        postprocessing=postprocessing,
+    )
+    tf.keras.backend.clear_session()
 
-    K.clear_session()
-    train(model_name='kaji_mach_final_no_mask_MI_pad14', epochs=13,
-          synth_data=False, predict=True, target='MI', time_steps=14)
+    # train MI model
+    train(
+        target='MI',
+        model_name='model_MI',
+        epochs=13,
+        evaluate=True,
+        postprocessing=postprocessing
+    )
+    tf.keras.backend.clear_session()
 
-    K.clear_session()
+    # train SEPSIS model
+    train(
+        target='SEPSIS',
+        model_name='model_SEPSIS',
+        epochs=17,
+        evaluate=True,
+        postprocessing=postprocessing,
+    )
+    tf.keras.backend.clear_session()
 
-    train(model_name='kaji_mach_final_no_mask_VANCOMYCIN_pad14', epochs=14,
-          synth_data=False, predict=True, target='VANCOMYCIN', time_steps=14)
+    # train VANCOMYCIN model
+    train(
+        target='VANCOMYCIN',
+        model_name='model_VANCOMYCIN',
+        epochs=14,
+        evaluate=True,
+        postprocessing=postprocessing,
+    )
+    tf.keras.backend.clear_session()
 
-    K.clear_session()
 
-    train(model_name='kaji_mach_final_no_mask_SEPSIS_pad14', epochs=17,
-          synth_data=False, predict=True, target='SEPSIS', time_steps=14)
-
-    exit()
-
-## REDUCE SAMPLE SIZES ##
-
-## MI ##
-
-    train(model_name='kaji_mach_final_no_mask_MI_pad14_80_percent', epochs=13,
-          synth_data=False, predict=True, target='MI', time_steps=14,
-          n_percentage=0.80)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_MI_pad14_60_percent', epochs=13,
-          synth_data=False, predict=True, target='MI', time_steps=14,
-          n_percentage=0.60)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_MI_pad14_40_percent', epochs=13,
-          synth_data=False, predict=True, target='MI', time_steps=14,
-          n_percentage=0.40)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_MI_pad14_20_percent', epochs=13,
-          synth_data=False, predict=True, target='MI', time_steps=14,
-          n_percentage=0.20)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_MI_pad14_10_percent', epochs=13,
-          synth_data=False, predict=True, target='MI', time_steps=14,
-          n_percentage=0.10)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_MI_pad14_5_percent', epochs=13,
-          synth_data=False, predict=True, target='MI', time_steps=14,
-          n_percentage=0.05)
-
-    K.clear_session()
-
-# SEPSIS ##
-
-    train(model_name='kaji_mach_final_no_mask_VANCOMYCIN_pad14_80_percent',
-          epochs=14, synth_data=False, predict=True, target='VANCOMYCIN',
-          time_steps=14, n_percentage=0.80)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_VANCOMYCIN_pad14_60_percent',
-          epochs=14, synth_data=False, predict=True, target='VANCOMYCIN',
-          time_steps=14, n_percentage=0.60)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_VANCOMYCIN_pad14_40_percent',
-          epochs=14, synth_data=False, predict=True, target='VANCOMYCIN',
-          time_steps=14, n_percentage=0.40)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_VANCOMYCIN_pad14_20_percent', epochs=14,
-          synth_data=False, predict=True, target='VANCOMYCIN', time_steps=14,
-          n_percentage=0.20)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_VANCOMYCIN_pad14_10_percent',
-          epochs=13, synth_data=False, predict=True, target='VANCOMYCIN',
-          time_steps=14, n_percentage=0.10)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_VANCOMYCIN_pad14_5_percent',
-          epochs=13, synth_data=False, predict=True, target='VANCOMYCIN',
-          time_steps=14, n_percentage=0.05)
-
-# VANCOMYCIN ##
-
-    train(model_name='kaji_mach_final_no_mask_SEPSIS_pad14_80_percent',
-          epochs=17, synth_data=False, predict=True, target='SEPSIS',
-          time_steps=14, n_percentage=0.80)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_SEPSIS_pad14_60_percent',
-          epochs=17, synth_data=False, predict=True, target='SEPSIS',
-          time_steps=14, n_percentage=0.60)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_SEPSIS_pad14_40_percent',
-          epochs=17, synth_data=False, predict=True, target='SEPSIS',
-          time_steps=14, n_percentage=0.40)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_SEPSIS_pad14_20_percent',
-          epochs=17, synth_data=False, predict=True, target='SEPSIS',
-          time_steps=14, n_percentage=0.20)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_SEPSIS_pad14_10_percent',
-          epochs=13, synth_data=False, predict=True, target='SEPSIS',
-          time_steps=14, n_percentage=0.10)
-
-    K.clear_session()
-
-    train(model_name='kaji_mach_final_no_mask_SEPSIS_pad14_5_percent',
-          epochs=13, synth_data=False, predict=True, target='SEPSIS',
-          time_steps=14, n_percentage=0.05)
+if __name__ == '__main__':
+    fire.Fire(train_models)
