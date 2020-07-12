@@ -8,7 +8,7 @@ import pickle
 import sys
 import tensorflow as tf
 
-MODEL_NAME = 'kaji_mach_final_no_mask_{}_pad14'
+MODEL_NAME = 'model_{}'
 TARGETS = set([
     'MI',
     'SEPSIS',
@@ -65,7 +65,7 @@ def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
 
         # load saved model
         model = Mimic3Lstm(N_FEATURES[target])
-        model.load_weights(model_path)
+        model.load_weights(model_path).expect_partial()
 
         # calculate model predictions (for performance evaluation)
         x_val = data['x_val'].astype(np.float32)

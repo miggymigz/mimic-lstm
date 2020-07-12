@@ -466,6 +466,7 @@ def train(
     balancer=True,
     evaluate=False,
     epochs=10,
+    optimizer='rms',
 ):
     """
 
@@ -523,7 +524,7 @@ def train(
     Y_TRAIN = Y_TRAIN[0:int(Y_TRAIN.shape[0])]
 
     # build model
-    model = Mimic3Lstm(no_feature_cols)
+    model = Mimic3Lstm(no_feature_cols, optimizer=optimizer)
     model.compile(
         optimizer=model.create_optimizer(),
         loss='binary_crossentropy',
@@ -617,7 +618,7 @@ def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=Fal
     print(f'[pickle_objects] DONE: target={target}')
 
 
-def train_models(postprocessing=False):
+def train_models(postprocessing=False, optimizer='rms', epochs=None):
     # prepare dataset for MI model
     pickle_objects(
         target='MI',
@@ -643,7 +644,8 @@ def train_models(postprocessing=False):
     train(
         target='MI',
         model_name='model_MI',
-        epochs=13,
+        optimizer=optimizer,
+        epochs=epochs or 13,
         evaluate=True,
     )
     tf.keras.backend.clear_session()
@@ -652,7 +654,8 @@ def train_models(postprocessing=False):
     train(
         target='SEPSIS',
         model_name='model_SEPSIS',
-        epochs=17,
+        optimizer=optimizer,
+        epochs=epochs or 17,
         evaluate=True,
     )
     tf.keras.backend.clear_session()
@@ -661,7 +664,8 @@ def train_models(postprocessing=False):
     train(
         target='VANCOMYCIN',
         model_name='model_VANCOMYCIN',
-        epochs=14,
+        optimizer=optimizer,
+        epochs=epochs or 14,
         evaluate=True,
     )
     tf.keras.backend.clear_session()
