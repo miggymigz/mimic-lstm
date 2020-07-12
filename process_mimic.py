@@ -11,8 +11,6 @@ import pandas as pd
 import pickle
 import re
 
-ROOT = "./mimic_database/"
-
 ## Utilities ##
 
 
@@ -29,7 +27,8 @@ class ParseItemID(object):
 
     ''' This class builds the dictionaries depending on desired features '''
 
-    def __init__(self):
+    def __init__(self, *, dataset_dir):
+        self.dataset_dir = dataset_dir
         self.dictionary = {}
 
         self.feature_names = [
@@ -66,10 +65,11 @@ class ParseItemID(object):
             elif '$' in feature:
                 self.patterns.append(feature[1::])
 
-        self.d_items = pd.read_csv(
-            ROOT + 'D_ITEMS.csv',
-            usecols=['ITEMID', 'LABEL']
-        )
+        # store d_items contents
+        d_items_path = os.path.join(self.dataset_dir, 'D_ITEMS.csv')
+        self.d_items = pd.read_csv(d_items_path)
+        self.d_items.columns = map(str.upper, self.d_items.columns)
+        self.d_items = self.d_items[['ITEMID', 'LABEL']]
         self.d_items.dropna(how='any', axis=0, inplace=True)
 
         self.script_features_names = [
@@ -118,9 +118,15 @@ class ParseItemID(object):
                                 '.*' for feature in self.script_features]
 
     def prescriptions_init(self):
-        self.prescriptions = pd.read_csv(ROOT + 'PRESCRIPTIONS.csv',
-                                         usecols=['ROW_ID', 'SUBJECT_ID', 'HADM_ID', 'DRUG',
-                                                  'STARTDATE', 'ENDDATE'])
+        columns = [
+            'ROW_ID', 'SUBJECT_ID', 'HADM_ID',
+            'DRUG', 'STARTDATE', 'ENDDATE'
+        ]
+
+        self.prescriptions = pd.read_csv(
+            os.path.join(self.dataset_dir, 'PRESCRIPTIONS.csv'),
+            usecols=columns,
+        )
         self.prescriptions.dropna(how='any', axis=0, inplace=True)
 
     def query_prescriptions(self, feature_name):
@@ -160,45 +166,68 @@ class ParseItemID(object):
                 self.rev[elem] = key
 
 
-class MimicParser(object):
+class MimicParser:
 
     ''' This class structures the MIMIC III and builds features then makes 24 hour windows '''
 
-    def __init__(self):
+    def __init__(self, *, dataset_dir, artifacts_dir, redo=False):
         self.name = 'mimic_assembler'
-        self.pid = ParseItemID()
-        self.pid.build_dictionary()
-        self.features = self.pid.features
 
-    def reduce_total(self, filepath, redo=False):
-        ''' This will filter out rows from CHARTEVENTS.csv that are not feauture relevant '''
+        self.dataset_dir = dataset_dir
+        self.artifacts_dir = artifacts_dir
+        self.redo = redo
+
+        self.pid = ParseItemID(dataset_dir=dataset_dir)
+        self.pid.build_dictionary()
+
+    def reduce_total(self):
+        """
+        This will filter out rows from CHARTEVENTS.csv that are not feauture relevant
+        """
         print('[reduce_total] START')
 
-        output_file = ROOT + './mapped_elements/CHARTEVENTS_reduced.csv'
-        if not redo and os.path.isfile(output_file):
+        # ensure input csv exists
+        input_csv_fname = 'CHARTEVENTS.csv'
+        input_path = os.path.join(self.dataset_dir, input_csv_fname)
+        if not os.path.isfile(input_path):
+            raise FileNotFoundError(f'{input_csv_fname} does not exist!')
+
+        # do nothing if output file already exists
+        output_csv_fname = 'CHARTEVENTS_reduced.csv'
+        output_file = os.path.join(self.artifacts_dir, output_csv_fname)
+        if not self.redo and os.path.isfile(output_file):
             print(f'[reduce_total] {output_file} already exists.')
             print('[reduce_total] Will skip this step.')
             return
 
-        pid = ParseItemID()
-        pid.build_dictionary()
-        dict_values = pid.dictionary.values()
-        dict_values = reduce(lambda x, y: x.union(y), dict_values)
+        # make a set of all the item IDs that is relevant
+        relevant_item_ids = reduce(
+            lambda x, y: x.union(y),
+            self.pid.dictionary.values(),
+        )
 
         chunksize = 10_000_000
-        columns = ['SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID',
-                   'ITEMID', 'CHARTTIME', 'VALUE', 'VALUENUM']
+        columns = [
+            'SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID',
+            'ITEMID', 'CHARTTIME', 'VALUE', 'VALUENUM'
+        ]
+
         iterator = pd.read_csv(
-            filepath,
+            input_path,
             iterator=True,
             chunksize=chunksize,
+            low_memory=False,
         )
 
         for i, df_chunk in enumerate(iterator):
             print(f'[reduce_total] Processing chunk#{i}')
 
-            df = df_chunk[df_chunk['ITEMID'].isin(dict_values)]
-            df = df.dropna(axis=0, subset=columns)
+            # ensure column names are uppercased
+            df_chunk.columns = map(str.upper, df_chunk.columns)
+
+            # drop rows that contain irrelevant features
+            condition = df_chunk['ITEMID'].isin(relevant_item_ids)
+            df = df_chunk[condition].dropna(axis=0, subset=columns)
 
             if i == 0:
                 df.to_csv(
@@ -241,8 +270,10 @@ class MimicParser(object):
                     print(chunk['HADM_ID'].isin(buckets[i]))
                     sliced = chunk[chunk['HADM_ID'].astype(
                         'int').isin(buckets[i])]
-                    sliced.to_csv(
-                        ROOT + 'mapped_elements/shard_{0}.csv'.format(i), index=False)
+
+                    _path = os.path.join(
+                        self.root, 'mapped_elements', f'shard_{i}.csv')
+                    sliced.to_csv(_path, index=False)
 
         else:
 
@@ -250,7 +281,10 @@ class MimicParser(object):
                 with open(filename, 'r') as chartevents:
                     chartevents.seek(0)
                     csvreader = csv.reader(chartevents)
-                    with open(ROOT+'mapped_elements/shard_{0}.csv'.format(i), 'w') as shard_writer:
+
+                    _path = os.path.join(
+                        self.root, 'mapped_elements', f'shard_{i}.csv')
+                    with open(_path, 'w') as shard_writer:
                         csvwriter = csv.writer(shard_writer)
                         for row in csvreader:
                             try:
@@ -564,32 +598,47 @@ class MimicParser(object):
         print(f'[add_notes] output file: {output_file}')
 
 
-def main(redo=False):
-    mp = MimicParser()
-    pid = ParseItemID()
-    pid.build_dictionary()
+def main(root='mimic_database', redo=False):
+    # ensure dataset directory exists
+    if not os.path.isdir(root):
+        raise FileNotFoundError(f'Directory "{root}" does not exist.')
 
-    fpath = ROOT + 'CHARTEVENTS.csv'
-    mp.reduce_total(fpath, redo=redo)
+    # all of the artifacts built by this preprocessing
+    # will be placed in the `mapped_elements` folder
+    # create it if it does not exist
+    artifacts_dir = os.path.join(root, 'mapped_elements')
+    if not os.path.isdir(artifacts_dir):
+        os.mkdir(artifacts_dir)
 
-    fpath = ROOT + 'mapped_elements/CHARTEVENTS_reduced.csv'
-    mp.create_day_blocks(fpath, redo=redo)
+    # create instance of parser to be used for dataset preprocessing
+    mp = MimicParser(
+        dataset_dir=root,
+        artifacts_dir=artifacts_dir,
+        redo=redo,
+    )
+
+    # filter out rows from CHARTEVENTS.csv
+    # rows that doesn't contain relevant features will be dropped
+    mp.reduce_total()
+
+    fpath = os.path.join(root, 'mapped_elements/CHARTEVENTS_reduced.csv')
+    # mp.create_day_blocks(fpath, redo=redo)
 
     fpath = fpath[:-4] + '_24_hour_blocks.csv'
-    mp.add_admissions_columns(fpath, redo=redo)
+    # mp.add_admissions_columns(fpath, redo=redo)
 
     fpath = fpath[:-4] + '_plus_admissions.csv'
-    mp.add_patient_columns(fpath, redo=redo)
+    # mp.add_patient_columns(fpath, redo=redo)
 
     fpath = fpath[:-4] + '_plus_patients.csv'
-    mp.clean_prescriptions(fpath, redo=redo)
-    mp.add_prescriptions(fpath, redo=redo)
+    # mp.clean_prescriptions(fpath, redo=redo)
+    # mp.add_prescriptions(fpath, redo=redo)
 
     fpath = fpath[:-4] + '_plus_scripts.csv'
-    mp.add_icd_infect(fpath, redo=redo)
+    # mp.add_icd_infect(fpath, redo=redo)
 
     fpath = fpath[:-4] + '_plus_icds.csv'
-    mp.add_notes(fpath, redo=redo)
+    # mp.add_notes(fpath, redo=redo)
 
 
 if __name__ == '__main__':
