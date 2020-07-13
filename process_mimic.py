@@ -179,6 +179,7 @@ class MimicParser:
 
         self.pid = ParseItemID(dataset_dir=dataset_dir)
         self.pid.build_dictionary()
+        self.pid.reverse_dictionary(self.pid.dictionary)
 
     def reduce_total(self):
         """
@@ -294,88 +295,109 @@ class MimicParser:
                                 print(row)
                                 print(e)
 
-    def create_day_blocks(self, file_name, redo=False):
-        ''' Uses pandas to take shards and build them out '''
-
+    def create_day_blocks(self):
+        """
+        Uses pandas to take shards and build them out
+        """
         print('[create_day_blocks] START')
 
-        output_file = file_name[:-4] + '_24_hour_blocks.csv'
-        if not redo and os.path.isfile(output_file):
+        # ensure input csv exists
+        input_csv_fname = 'CHARTEVENTS_reduced.csv'
+        input_path = os.path.join(self.artifacts_dir, input_csv_fname)
+        if not os.path.isfile(input_path):
+            raise FileNotFoundError(f'{input_csv_fname} does not exist!')
+
+        # do nothing if output file already exists
+        output_csv_fname = 'CHARTEVENTS_reduced_24_hour_blocks.csv'
+        output_file = os.path.join(self.artifacts_dir, output_csv_fname)
+        if not self.redo and os.path.isfile(output_file):
             print(f'[create_day_blocks] {output_file} already exists.')
             print('[create_day_blocks] Will skip this step.')
             return
 
-        pid = ParseItemID()
-        pid.build_dictionary()
-        pid.reverse_dictionary(pid.dictionary)
-
-        df = pd.read_csv(file_name)
-        df['CHARTDAY'] = df['CHARTTIME'].astype('str') \
-            .str.split(' ') \
-            .apply(lambda x: x[0])
+        df = pd.read_csv(input_path)
+        df['CHARTDAY'] = df['CHARTTIME'].astype(
+            'str').str.split(' ').apply(lambda x: x[0])
         df['HADMID_DAY'] = df['HADM_ID'].astype('str') + '_' + df['CHARTDAY']
-        df['FEATURES'] = df['ITEMID'].apply(lambda x: pid.rev[x])
-        print(f'[DEBUG] df.shape={df.shape}')
+        df['FEATURES'] = df['ITEMID'].apply(lambda x: self.pid.rev[x])
 
         self.hadm_dict = dict(zip(df['HADMID_DAY'], df['SUBJECT_ID']))
 
-        df2 = pd.pivot_table(
-            df, index='HADMID_DAY', columns='FEATURES', values='VALUENUM', fill_value=np.nan)
+        df_src = pd.pivot_table(
+            df,
+            index='HADMID_DAY',
+            columns='FEATURES',
+            values='VALUENUM',
+            fill_value=np.nan,
+            dropna=False,
+        )
 
-        df3 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
-                             values='VALUENUM', aggfunc=np.std, fill_value=0)
-        df3.columns = ["{0}_std".format(i) for i in list(df2.columns)]
+        df_std = pd.pivot_table(
+            df,
+            index='HADMID_DAY',
+            columns='FEATURES',
+            values='VALUENUM',
+            aggfunc=np.std,
+            fill_value=0,
+            dropna=False,
+        )
+        df_std.columns = [f'{i}_std' for i in list(df_src.columns)]
 
-        df4 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
-                             values='VALUENUM', aggfunc=np.amin, fill_value=np.nan)
-        df4.columns = ["{0}_min".format(i) for i in list(df2.columns)]
+        df_min = pd.pivot_table(
+            df,
+            index='HADMID_DAY',
+            columns='FEATURES',
+            values='VALUENUM',
+            aggfunc=np.amin,
+            fill_value=np.nan,
+            dropna=False,
+        )
+        df_min.columns = [f'{i}_min' for i in list(df_src.columns)]
 
-        df5 = pd.pivot_table(df, index='HADMID_DAY', columns='FEATURES',
-                             values='VALUENUM', aggfunc=np.amax, fill_value=np.nan)
+        df_max = pd.pivot_table(
+            df,
+            index='HADMID_DAY',
+            columns='FEATURES',
+            values='VALUENUM',
+            aggfunc=np.amax,
+            fill_value=np.nan,
+            dropna=False,
+        )
+        df_max.columns = [f'{i}_max' for i in list(df_src.columns)]
 
-        df2 = pd.concat([df2, df3, df4, df5], axis=1, sort=True)
+        df2 = pd.concat([df_src, df_std, df_min, df_max], axis=1)
+
         if 'tobacco' in df2.columns:
-            print('[create_day_blocks] WARN: "tobacco" not in df2.columns')
             df2['tobacco'].apply(lambda x: np.around(x))
-
-        if 'daily weight_std' in df2:
-            print('[create_day_blocks] Will delete "daily weight_std" in df2')
-            del df2['daily weight_std']
-        if 'daily weight_min' in df2:
-            print('[create_day_blocks] Will delete "daily weight_min" in df2')
-            del df2['daily weight_min']
-        if 'daily weight_max' in df2:
-            print('[create_day_blocks] Will delete "daily weight_max" in df2')
-            del df2['daily weight_max']
-        if 'tobacco_std' in df2:
-            print('[create_day_blocks] Will delete "tobacco_std" in df2')
             del df2['tobacco_std']
-        if 'tobacco_min' in df2:
-            print('[create_day_blocks] Will delete "tobacco_min" in df2')
             del df2['tobacco_min']
-        if 'tobacco_max' in df2:
-            print('[create_day_blocks] Will delete "tobacco_max" in df2')
             del df2['tobacco_max']
+        else:
+            print('[create_day_blocks] WARN: "tobacco" not in df2.columns')
+
+        if 'daily weight' in df2.columns:
+            del df2['daily weight_std']
+            del df2['daily weight_min']
+            del df2['daily weight_max']
+        else:
+            print('[create_day_blocks] WARN: "daily weight" not in df2.columns')
 
         rel_columns = list(df2.columns)
         rel_columns = [i for i in rel_columns if '_' not in i]
 
         for col in rel_columns:
-            if len(np.unique(df2[col])[np.isfinite(np.unique(df2[col]))]) <= 2:
+            unique = np.unique(df2[col])
+            finite_mask = np.isfinite(unique)
+            if len(unique[finite_mask]) <= 2:
                 print(f'[create_day_blocks] Will delete "{col}" (std,min,max)')
                 del df2[col + '_std']
                 del df2[col + '_min']
                 del df2[col + '_max']
 
-        for i in list(df2.columns):
-            print(f'[create_day_blocks] Will average column "{i}"')
-            condition = df2[i] > df2[i].quantile(.95)
-            df2[i][condition] = df2[i].median()
-            # if i != 'troponin':
-            #     df2[i] = df2[i].where(df2[i] > df2[i].quantile(.875)).fillna(df2[i].median())
-
-        for i in list(df2.columns):
-            df2[i].fillna(df2[i].median(), inplace=True)
+        for column in df2.columns:
+            condition = df2[column] > df2[column].quantile(.95)
+            df2[column][condition] = df2[column].median()
+            df2[column].fillna(df2[column].median(), inplace=True)
 
         df2['HADMID_DAY'] = df2.index
         df2['INR'] = df2['INR'] + df2['PT']
@@ -386,6 +408,7 @@ class MimicParser:
         del df2['PT_std']
         del df2['PT_min']
         del df2['PT_max']
+
         df2.dropna(thresh=int(0.75*len(df2.columns)), axis=0, inplace=True)
         df2.to_csv(output_file, index=False)
 
@@ -621,23 +644,23 @@ def main(root='mimic_database', redo=False):
     # rows that doesn't contain relevant features will be dropped
     mp.reduce_total()
 
-    fpath = os.path.join(root, 'mapped_elements/CHARTEVENTS_reduced.csv')
-    # mp.create_day_blocks(fpath, redo=redo)
+    # TODO: add comment here
+    mp.create_day_blocks()
 
-    fpath = fpath[:-4] + '_24_hour_blocks.csv'
+    # fpath = fpath[:-4] + '_24_hour_blocks.csv'
     # mp.add_admissions_columns(fpath, redo=redo)
 
-    fpath = fpath[:-4] + '_plus_admissions.csv'
+    # fpath = fpath[:-4] + '_plus_admissions.csv'
     # mp.add_patient_columns(fpath, redo=redo)
 
-    fpath = fpath[:-4] + '_plus_patients.csv'
+    # fpath = fpath[:-4] + '_plus_patients.csv'
     # mp.clean_prescriptions(fpath, redo=redo)
     # mp.add_prescriptions(fpath, redo=redo)
 
-    fpath = fpath[:-4] + '_plus_scripts.csv'
+    # fpath = fpath[:-4] + '_plus_scripts.csv'
     # mp.add_icd_infect(fpath, redo=redo)
 
-    fpath = fpath[:-4] + '_plus_icds.csv'
+    # fpath = fpath[:-4] + '_plus_icds.csv'
     # mp.add_notes(fpath, redo=redo)
 
 
