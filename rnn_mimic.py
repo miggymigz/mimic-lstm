@@ -535,7 +535,12 @@ def train(
     if architecture == 'lstm':
         model = Mimic3Lstm(no_feature_cols, optimizer=optimizer)
     elif architecture == 'gpt2':
-        model = MimicGpt2(TIMESTEPS, no_feature_cols, N_ATTN_HEADS[target])
+        model = MimicGpt2(
+            no_feature_cols, 
+            N_ATTN_HEADS[target],
+            n_days=TIMESTEPS,
+            n_layers=12,
+        )
     else:
         raise AssertionError(f'Unknown model "{model}"')
 

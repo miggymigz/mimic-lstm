@@ -1,5 +1,7 @@
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
+
 from tf_model import Mimic3Lstm
+from tf_gpt2_model import MimicGpt2
 
 import fire
 import numpy as np
@@ -19,6 +21,11 @@ N_FEATURES = {
     'SEPSIS': 225,
     'VANCOMYCIN': 224,
 }
+N_ATTN_HEADS = {
+    'MI': 13,
+    'SEPSIS': 9,
+    'VANCOMYCIN': 8,
+}
 PICKLED_OBJECTS = {
     'x_train': 'X_TRAIN_{}.txt',
     'y_train': 'Y_TRAIN_{}.txt',
@@ -30,7 +37,7 @@ PICKLED_OBJECTS = {
 }
 
 
-def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
+def evaluate(archi='lstm', models_dir='saved_models', pickled_dir='pickled_objects'):
     # check saved_models directory existence
     if not os.path.isdir(models_dir):
         print(f'[ERROR] Model directory "{models_dir}" does not exist.')
@@ -64,7 +71,7 @@ def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
         data = get_data(target=target)
 
         # load saved model
-        model = Mimic3Lstm(N_FEATURES[target])
+        model = get_model(archi, target)
         model.load_weights(model_path).expect_partial()
 
         # calculate model predictions (for performance evaluation)
@@ -86,6 +93,19 @@ def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
         print('    CLASSIFICATION REPORT VAL')
         print(classification_report(y_val, np.around(y_pred)))
         print('=' * 40)
+
+
+def get_model(archi, target):
+    if archi == 'lstm':
+        n_features = N_FEATURES[target]
+        return Mimic3Lstm(n_features)
+
+    if archi == 'gpt2':
+        n_features = N_FEATURES[target]
+        n_attn_heads = N_ATTN_HEADS[target]
+        return MimicGpt2(n_features, n_attn_heads)
+
+    raise AssertionError(f'Unknown model "{archi}"')
 
 
 def get_data(*, target, pickled_dir='pickled_objects'):

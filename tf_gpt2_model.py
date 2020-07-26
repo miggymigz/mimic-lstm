@@ -185,13 +185,12 @@ class Decoder(tf.keras.layers.Layer):
 
 
 class MimicGpt2(tf.keras.Model):
-    def __init__(self, n_days, n_features, n_heads, *args, **kwargs):
+    def __init__(self, n_features, n_heads, n_days=14, n_layers=12, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.n_days = n_days
         self.n_features = n_features
-        self.n_ctx = 1024
-        self.n_layers = 12
+        self.n_layers = n_layers
 
         self.wpe = tf.keras.layers.Embedding(
             n_days,
