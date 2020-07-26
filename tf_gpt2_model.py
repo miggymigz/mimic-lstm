@@ -16,9 +16,9 @@ def gelu(x):
 
 def create_attention_mask(x):
     x = tf.reduce_any(x != 0, axis=-1)
-    x = x[:, tf.newaxis, tf.newaxis, :]
+    x = x[:, tf.newaxis, :, tf.newaxis]
     x = tf.cast(x, tf.float32)
-    return (1 - x) * -1e4
+    return (1 - x) * -1e9
 
 
 class MLP(tf.keras.layers.Layer):
@@ -66,16 +66,30 @@ class Conv1D(tf.keras.layers.Layer):
 
 
 class Attention(tf.keras.layers.Layer):
-    def __init__(self, n_features, n_heads, **kwargs):
+    def __init__(self, n_days, n_features, n_heads, **kwargs):
         super().__init__(**kwargs)
 
         assert n_features % n_heads == 0
+        self.n_days = n_days
+        self.n_features = n_features
         self.n_heads = n_heads
 
         self.c_attn = Conv1D(n_features * 3, n_features, name='c_attn')
         self.c_proj = Conv1D(n_features, n_features, name='c_proj')
         self.attn_dropout = tf.keras.layers.Dropout(0.1)
         self.resid_dropout = tf.keras.layers.Dropout(0.1)
+
+    def build(self, input_shape):
+        self.weight = self.add_weight(
+            'weight',
+            shape=[self.n_days, self.n_features],
+            initializer=tf.keras.initializers.TruncatedNormal(stddev=0.02),
+        )
+        self.bias = self.add_weight(
+            'bias',
+            shape=[1, self.n_features],
+            initializer=tf.zeros_initializer(),
+        )
 
     @staticmethod
     def causal_attention_mask(nd, ns, dtype):
@@ -100,14 +114,19 @@ class Attention(tf.keras.layers.Layer):
         b = tf.reshape(b, [1, 1, nd, ns])
         w = w * b - 1e4 * (1 - b)
 
+        # Project attention weights (for embedding level attention)
+        reshaped_proj_weights = self.split_heads(self.weight[tf.newaxis, :, :])
+        reshaped_proj_bias = self.split_heads(self.bias[tf.newaxis, :, :])
+        w = tf.matmul(w, reshaped_proj_weights) + reshaped_proj_bias
+
         # Apply the attention mask
         w = w + mask
 
-        w = tf.nn.softmax(w, axis=-1)
+        w = tf.nn.softmax(w, axis=-2)
         w = self.attn_dropout(w, training=training)
 
         # return outputs and attn weights
-        return tf.matmul(w, v), w
+        return w * v, w
 
     def merge_heads(self, x):
         x = tf.transpose(x, [0, 2, 1, 3])
@@ -131,7 +150,7 @@ class Attention(tf.keras.layers.Layer):
         v = self.split_heads(v)
 
         a, w = self._attn(q, k, v, mask, training=training)
-        a = self.merge_heads(a)
+        a, w = self.merge_heads(a), self.merge_heads(w)
         a = self.c_proj(a)
         a = self.resid_dropout(a, training=training)
 
@@ -139,14 +158,14 @@ class Attention(tf.keras.layers.Layer):
 
 
 class Decoder(tf.keras.layers.Layer):
-    def __init__(self, n_features, n_heads, scale=True, **kwargs):
+    def __init__(self, n_days, n_features, n_heads, scale=True, **kwargs):
         super().__init__(**kwargs)
 
         self.ln_1 = tf.keras.layers.LayerNormalization(
             epsilon=1e-5,
             name='ln_1',
         )
-        self.attn = Attention(n_features, n_heads, name='attn')
+        self.attn = Attention(n_days, n_features, n_heads, name='attn')
         self.ln_2 = tf.keras.layers.LayerNormalization(
             epsilon=1e-5,
             name='ln_2',
@@ -183,9 +202,13 @@ class MimicGpt2(tf.keras.Model):
         )
         self.drop = tf.keras.layers.Dropout(0.1)
         self.decoders = [
-            Decoder(n_features, n_heads, name=f'decoder_{i}') for i in range(self.n_layers)]
+            Decoder(n_days, n_features, n_heads, name=f'decoder_{i}')
+            for i in range(self.n_layers)
+        ]
         self.ln_f = tf.keras.layers.LayerNormalization(
-            epsilon=1e-5, name='ln_f')
+            epsilon=1e-5,
+            name='ln_f',
+        )
         self.linear = tf.keras.layers.Dense(
             1,
             activation='sigmoid',
@@ -197,7 +220,7 @@ class MimicGpt2(tf.keras.Model):
     # TODO: try the correct order or layer norms
     def call(self, x, training=False):
         # sanity check
-        _, n_days, n_features = shape_list(x)
+        batch_size, n_days, n_features = shape_list(x)
         assert n_days == self.n_days, "x's shape should be [batch_size, n_days, n_features]"
         assert n_features == self.n_features, "x's shape should be [batch_size, n_days, n_features]"
 
@@ -212,12 +235,10 @@ class MimicGpt2(tf.keras.Model):
         x = x + self.wpe(position_ids)
         x = self.drop(x, training=training)
 
-        all_attn_weights = []
+        acc_attn_weights = tf.zeros((batch_size, n_days, n_features))
         for decoder in self.decoders:
             x, w = decoder(x, attn_mask, training=training)
-
-            # save attention weights for this decoder block
-            all_attn_weights.append(w)
+            acc_attn_weights += w
 
         # go through final layer norm
         x = self.ln_f(x)
@@ -225,4 +246,4 @@ class MimicGpt2(tf.keras.Model):
         # project linearly to get probabilities for each day
         x = self.linear(x)
 
-        return x, all_attn_weights
+        return x, acc_attn_weights / self.n_layers
