@@ -3,7 +3,9 @@
 from pad_sequences import PadSequences
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
 from time import time
+
 from tf_model import Mimic3Lstm
+from tf_gpt2_model import MimicGpt2
 
 import fire
 import numpy as np
@@ -16,6 +18,11 @@ TIMESTEPS = 14
 ROOT = os.path.join('mimic_database', 'mapped_elements')
 PREPROCESSED_FILE = os.path.join(ROOT, 'CHARTEVENTS_preprocessed.csv')
 
+N_ATTN_HEADS = {
+    'MI': 13,
+    'SEPSIS': 9,
+    'VANCOMYCIN': 8,
+}
 
 # feature IDs useful for post processing
 ID_AGE = {
@@ -465,8 +472,9 @@ def train(
     model_name="kaji_mach_0",
     balancer=True,
     evaluate=False,
+    architecture='lstm',
     epochs=10,
-    optimizer='rms',
+    optimizer='rmsprop',
 ):
     """
 
@@ -523,10 +531,36 @@ def train(
     X_TRAIN = X_TRAIN[0:int(X_TRAIN.shape[0])]
     Y_TRAIN = Y_TRAIN[0:int(Y_TRAIN.shape[0])]
 
-    # build model
-    model = Mimic3Lstm(no_feature_cols, optimizer=optimizer)
+    # choose model
+    if architecture == 'lstm':
+        model = Mimic3Lstm(no_feature_cols, optimizer=optimizer)
+    elif architecture == 'gpt2':
+        model = MimicGpt2(TIMESTEPS, no_feature_cols, N_ATTN_HEADS[target])
+    else:
+        raise AssertionError(f'Unknown model "{model}"')
+
+    # choose optimizer
+    if optimizer == 'rmsprop':
+        model_optimizer = tf.keras.optimizers.RMSprop(
+            learning_rate=0.001,
+            rho=0.9,
+            epsilon=1e-08,
+        )
+    elif optimizer == 'adam':
+        model_optimizer = tf.keras.optimizers.Adam(
+            learning_rate=0.001,
+            beta_1=0.9,
+            beta_2=0.98,
+            epsilon=1e-9,
+        )
+    else:
+        raise AssertionError(
+            f'ERROR: Optimizer "{optimizer}" is not supported'
+        )
+
+    # compile model
     model.compile(
-        optimizer=model.create_optimizer(),
+        optimizer=model_optimizer,
         loss='binary_crossentropy',
         metrics=['acc'],
     )
@@ -618,7 +652,7 @@ def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=Fal
     print(f'[pickle_objects] DONE: target={target}')
 
 
-def train_models(postprocessing=False, optimizer='rms', epochs=None):
+def train_models(postprocessing=False, model='lstm', optimizer='rmsprop', epochs=None):
     # prepare dataset for MI model
     pickle_objects(
         target='MI',
@@ -644,6 +678,7 @@ def train_models(postprocessing=False, optimizer='rms', epochs=None):
     train(
         target='MI',
         model_name='model_MI',
+        architecture=model,
         optimizer=optimizer,
         epochs=epochs or 13,
         evaluate=True,
@@ -654,6 +689,7 @@ def train_models(postprocessing=False, optimizer='rms', epochs=None):
     train(
         target='SEPSIS',
         model_name='model_SEPSIS',
+        architecture=model,
         optimizer=optimizer,
         epochs=epochs or 17,
         evaluate=True,
@@ -664,6 +700,7 @@ def train_models(postprocessing=False, optimizer='rms', epochs=None):
     train(
         target='VANCOMYCIN',
         model_name='model_VANCOMYCIN',
+        architecture=model,
         optimizer=optimizer,
         epochs=epochs or 14,
         evaluate=True,

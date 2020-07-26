@@ -247,3 +247,7 @@ class MimicGpt2(tf.keras.Model):
         x = self.linear(x)
 
         return x, acc_attn_weights / self.n_layers
+
+    def model(self):
+        x = tf.keras.layers.Input(shape=(self.n_days, self.n_features))
+        return tf.keras.Model(inputs=[x], outputs=self.call(x))
