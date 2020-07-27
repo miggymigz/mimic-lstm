@@ -95,22 +95,10 @@ class Attention(tf.keras.layers.Layer):
         self.n_features = n_features
         self.n_heads = n_heads
 
-        self.c_attn = Conv1D(n_features * 3, n_features, name='c_attn')
+        self.c_attn = Conv1D(n_features * 4, n_features, name='c_attn')
         self.c_proj = Conv1D(n_features, n_features, name='c_proj')
         self.attn_dropout = tf.keras.layers.Dropout(0.1)
         self.resid_dropout = tf.keras.layers.Dropout(0.1)
-
-    def build(self, input_shape):
-        self.weight = self.add_weight(
-            'weight',
-            shape=[self.n_days, self.n_features],
-            initializer=tf.keras.initializers.TruncatedNormal(stddev=0.02),
-        )
-        self.bias = self.add_weight(
-            'bias',
-            shape=[1, self.n_features],
-            initializer=tf.zeros_initializer(),
-        )
 
     @staticmethod
     def causal_attention_mask(nd, ns, dtype):
@@ -122,27 +110,24 @@ class Attention(tf.keras.layers.Layer):
         m = i >= j - ns + nd
         return tf.cast(m, dtype)
 
-    def _attn(self, q, k, v, mask, training=False):
-        # q, k, v have shape [batch, heads, sequence, features]
+    def _attn(self, q, k, p, v, mask, training=False):
+        # q, k, p, v have shape [batch, heads, sequence, features]
         w = tf.matmul(q, k, transpose_b=True)
         dk = tf.cast(shape_list(k)[-1], tf.float32)  # scale attention_scores
         w = w / tf.math.sqrt(dk)
 
-        # w has shape [batch, heads, dst_sequence, src_sequence]
+        # w has shape [batch, heads, days, hfeatures]
         # where information flows from src to dst.
         _, _, nd, ns = shape_list(w)
         b = self.causal_attention_mask(nd, ns, dtype=w.dtype)
         b = tf.reshape(b, [1, 1, nd, ns])
         w = w * b - 1e4 * (1 - b)
 
-        # Project attention weights (for embedding level attention)
-        reshaped_proj_weights = self.split_heads(self.weight[tf.newaxis, :, :])
-        reshaped_proj_bias = self.split_heads(self.bias[tf.newaxis, :, :])
-        w = tf.matmul(w, reshaped_proj_weights) + reshaped_proj_bias
-
         # Apply the attention mask
+        w = tf.matmul(w, p)
         w = w + mask
 
+        # Softmax the scores
         w = tf.nn.softmax(w, axis=-2)
         w = self.attn_dropout(w, training=training)
 
@@ -165,12 +150,13 @@ class Attention(tf.keras.layers.Layer):
 
     def call(self, x, mask, training=False):
         x = self.c_attn(x)
-        q, k, v = tf.split(x, 3, axis=2)
+        q, k, p, v = tf.split(x, 4, axis=2)
         q = self.split_heads(q)
         k = self.split_heads(k)
+        p = self.split_heads(p)
         v = self.split_heads(v)
 
-        a, w = self._attn(q, k, v, mask, training=training)
+        a, w = self._attn(q, k, p, v, mask, training=training)
         a, w = self.merge_heads(a), self.merge_heads(w)
         a = self.c_proj(a)
         a = self.resid_dropout(a, training=training)
