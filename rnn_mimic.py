@@ -330,8 +330,10 @@ def return_data(balancer=True, target='MI',
     # save a copy of the unnormalized training set
     ORIG_TRAIN = ORIG_MATRIX[:int(tt_split*X_MATRIX.shape[0])]
 
-    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                     :int(val_percentage*X_MATRIX.shape[0])]
-    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                     :int(val_percentage*Y_MATRIX.shape[0])]
+    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])
+                         :int(val_percentage*X_MATRIX.shape[0])]
+    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])
+                         :int(val_percentage*Y_MATRIX.shape[0])]
     Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
     # save a copy of the unnormalized validation set
@@ -475,6 +477,7 @@ def train(
     architecture='lstm',
     epochs=10,
     optimizer='rmsprop',
+    layers=4,
 ):
     """
 
@@ -536,10 +539,10 @@ def train(
         model = Mimic3Lstm(no_feature_cols, optimizer=optimizer)
     elif architecture == 'gpt2':
         model = MimicGpt2(
-            no_feature_cols, 
+            no_feature_cols,
             N_ATTN_HEADS[target],
             n_days=TIMESTEPS,
-            n_layers=12,
+            n_layers=layers,
         )
     else:
         raise AssertionError(f'Unknown model "{model}"')
@@ -584,7 +587,10 @@ def train(
     )
 
     # save model weights
-    model_weights_dir = os.path.join('saved_models', f'weights_{target}')
+    model_weights_dir = os.path.join(
+        'saved_models',
+        f'{architecture}_weights_{target}',
+    )
     current_model_path = os.path.join(model_weights_dir, model_name)
     model.save_weights(current_model_path, overwrite=True)
     print(f'{target}\'s model weights are saved in: {model_weights_dir}')
@@ -657,7 +663,13 @@ def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=Fal
     print(f'[pickle_objects] DONE: target={target}')
 
 
-def train_models(postprocessing=False, model='lstm', optimizer='rmsprop', epochs=None):
+def train_models(
+    architecture='lstm',
+    optimizer='rmsprop',
+    layers=4,
+    epochs=None,
+    postprocessing=False,
+):
     # prepare dataset for MI model
     pickle_objects(
         target='MI',
@@ -683,8 +695,9 @@ def train_models(postprocessing=False, model='lstm', optimizer='rmsprop', epochs
     train(
         target='MI',
         model_name='model_MI',
-        architecture=model,
+        architecture=architecture,
         optimizer=optimizer,
+        layers=layers,
         epochs=epochs or 13,
         evaluate=True,
     )
@@ -694,8 +707,9 @@ def train_models(postprocessing=False, model='lstm', optimizer='rmsprop', epochs
     train(
         target='SEPSIS',
         model_name='model_SEPSIS',
-        architecture=model,
+        architecture=architecture,
         optimizer=optimizer,
+        layers=layers,
         epochs=epochs or 17,
         evaluate=True,
     )
@@ -705,8 +719,9 @@ def train_models(postprocessing=False, model='lstm', optimizer='rmsprop', epochs
     train(
         target='VANCOMYCIN',
         model_name='model_VANCOMYCIN',
-        architecture=model,
+        architecture=architecture,
         optimizer=optimizer,
+        layers=layers,
         epochs=epochs or 14,
         evaluate=True,
     )

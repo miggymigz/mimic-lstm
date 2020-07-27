@@ -27,16 +27,21 @@ N_ATTN_HEADS = {
     'VANCOMYCIN': 8,
 }
 PICKLED_OBJECTS = {
-    'x_train': 'X_TRAIN_{}.txt',
-    'y_train': 'Y_TRAIN_{}.txt',
-    'x_val': 'X_VAL_{}.txt',
-    'y_val': 'Y_VAL_{}.txt',
+    # 'x_train': 'X_TRAIN_{}.txt',
+    # 'y_train': 'Y_TRAIN_{}.txt',
+    # 'x_val': 'X_VAL_{}.txt',
+    # 'y_val': 'Y_VAL_{}.txt',
     'x_test': 'X_TEST_{}.txt',
     'y_test': 'Y_TEST_{}.txt',
 }
 
 
-def evaluate(archi='lstm', models_dir='saved_models', pickled_dir='pickled_objects'):
+def evaluate(
+    architecture='lstm',
+    layers=4,
+    models_dir='saved_models',
+    pickled_dir='pickled_objects'
+):
     # check saved_models directory existence
     if not os.path.isdir(models_dir):
         print(f'[ERROR] Model directory "{models_dir}" does not exist.')
@@ -59,7 +64,11 @@ def evaluate(archi='lstm', models_dir='saved_models', pickled_dir='pickled_objec
     # retrieve data for the specific target
     for target in TARGETS:
         model_name = MODEL_NAME.format(target)
-        model_path = os.path.join(models_dir, f'weights_{target}', model_name)
+        model_path = os.path.join(
+            models_dir,
+            f'{architecture}_weights_{target}',
+            model_name,
+        )
 
         # check for model existence
         if not os.path.isfile(f'{model_path}.index'):
@@ -70,7 +79,7 @@ def evaluate(archi='lstm', models_dir='saved_models', pickled_dir='pickled_objec
         data = get_data(target=target)
 
         # load saved model
-        model = get_model(archi, target)
+        model = get_model(architecture, layers, target)
         model.load_weights(model_path).expect_partial()
 
         # prepare inputs and mask
@@ -96,17 +105,20 @@ def evaluate(archi='lstm', models_dir='saved_models', pickled_dir='pickled_objec
         print('=' * 40)
 
 
-def get_model(archi, target):
-    if archi == 'lstm':
+def get_model(architecture, layers, target):
+    print(f'[INFO] Using architecture={architecture}, layers={layers}')
+
+    if architecture == 'lstm':
+        print(f'[INFO] Parameter layers={layers} will not be used')
         n_features = N_FEATURES[target]
         return Mimic3Lstm(n_features)
 
-    if archi == 'gpt2':
+    if architecture == 'gpt2':
         n_features = N_FEATURES[target]
         n_attn_heads = N_ATTN_HEADS[target]
-        return MimicGpt2(n_features, n_attn_heads)
+        return MimicGpt2(n_features, n_attn_heads, n_layers=layers)
 
-    raise AssertionError(f'Unknown model "{archi}"')
+    raise AssertionError(f'Unknown model "{architecture}"')
 
 
 def get_data(*, target, pickled_dir='pickled_objects'):
