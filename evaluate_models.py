@@ -24,9 +24,8 @@ PICKLED_OBJECTS = {
     'y_train': 'Y_TRAIN_{}.txt',
     'x_val': 'X_VAL_{}.txt',
     'y_val': 'Y_VAL_{}.txt',
-    'x_boolmat_val': 'x_boolmat_val_{}.txt',
-    'y_boolmat_val': 'y_boolmat_val_{}.txt',
-    'no_feature_cols': 'no_feature_cols_{}.txt',
+    'x_test': 'X_TEST_{}.txt',
+    'y_test': 'Y_TEST_{}.txt',
 }
 
 
@@ -67,24 +66,26 @@ def evaluate(models_dir='saved_models', pickled_dir='pickled_objects'):
         model = Mimic3Lstm(N_FEATURES[target])
         model.load_weights(model_path).expect_partial()
 
+        # prepare inputs and mask
+        x_test = data['x_test'].astype(np.float32)
+        y_boolmat = np.reshape(np.any(x_test, axis=2), (-1, 14, 1))
+
         # calculate model predictions (for performance evaluation)
-        x_val = data['x_val'].astype(np.float32)
-        y_pred, _ = model(x_val)
-        y_pred = y_pred[~data['y_boolmat_val']]
-        np.unique(y_pred)
-        y_val = data['y_val'][~data['y_boolmat_val']]
+        y_pred, _ = model(x_test)
+        y_pred = y_pred[y_boolmat]
+        y_test = data['y_test'][y_boolmat]
 
         # output model performance statistics
-        cm = confusion_matrix(y_val, np.around(y_pred))
-        acc = accuracy_score(y_val, np.around(y_pred))
-        auc = roc_auc_score(y_val, y_pred)
+        cm = confusion_matrix(y_test, np.around(y_pred))
+        acc = accuracy_score(y_test, np.around(y_pred))
+        auc = roc_auc_score(y_test, y_pred)
         print(f'\n[INFO] Evaluating model for {target}')
         print(f'    Confusion Matrix Validation')
         print(cm)
         print(f'    Validation Accuracy: {acc:.4%}')
         print(f'    ROC AUC SCORE VAL: {auc:.4%}')
         print('    CLASSIFICATION REPORT VAL')
-        print(classification_report(y_val, np.around(y_pred)))
+        print(classification_report(y_test, np.around(y_pred)))
         print('=' * 40)
 
 
