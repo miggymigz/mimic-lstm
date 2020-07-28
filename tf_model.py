@@ -3,7 +3,7 @@ import tensorflow as tf
 
 class Attention(tf.keras.layers.Layer):
     def __init__(self, n_features, time_steps=14, **kwargs):
-        super(Attention, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.n_features = n_features
         self.time_steps = time_steps
@@ -23,8 +23,8 @@ class Attention(tf.keras.layers.Layer):
 
 
 class Mimic3Lstm(tf.keras.Model):
-    def __init__(self, n_features, time_steps=14):
-        super(Mimic3Lstm, self).__init__()
+    def __init__(self, n_features, time_steps=14, batch_size=1, **kwargs):
+        super().__init__(**kwargs)
 
         self.n_features = n_features
         self.time_steps = time_steps
@@ -32,16 +32,14 @@ class Mimic3Lstm(tf.keras.Model):
         self.attention = Attention(
             n_features,
             time_steps=time_steps,
-            input_shape=(time_steps, n_features),
+            batch_input_shape=(batch_size, time_steps, n_features)
         )
         self.masking = tf.keras.layers.Masking(
             mask_value=0,
-            input_shape=(time_steps, n_features),
         )
         self.lstm = tf.keras.layers.LSTM(
             256,
             return_sequences=True,
-            input_shape=(time_steps, n_features),
         )
         self.distributed = tf.keras.layers.TimeDistributed(
             tf.keras.layers.Dense(1, activation='sigmoid')

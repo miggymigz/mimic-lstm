@@ -345,8 +345,8 @@ def return_data(
     # save a copy of the unnormalized training set
     ORIG_TRAIN = ORIG_MATRIX[:int(tt_split*X_MATRIX.shape[0])]
 
-    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                     :int(val_percentage*X_MATRIX.shape[0])]
-    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                     :int(val_percentage*Y_MATRIX.shape[0])]
+    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0]):int(val_percentage*X_MATRIX.shape[0])]
+    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0]):int(val_percentage*Y_MATRIX.shape[0])]
     Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
     # save a copy of the unnormalized validation set
@@ -509,6 +509,7 @@ def train(
     epochs=10,
     optimizer='rmsprop',
     layers=4,
+    batch_size=16,
 ):
     """
 
@@ -552,7 +553,14 @@ def train(
 
     # choose model
     if architecture == 'lstm':
-        model = Mimic3Lstm(N_FEATURES[target])
+        # Because of the way the RNN state is passed from timestep to timestep, 
+        # the model only accepts a fixed batch size once built.
+        # To run the model with a different batch_size, 
+        # we need to rebuild the model and restore the weights from the checkpoint.
+        model = Mimic3Lstm(
+            N_FEATURES[target], 
+            batch_size=batch_size,
+        )
     elif architecture == 'gpt2':
         model = MimicGpt2(
             N_FEATURES[target],
@@ -614,8 +622,14 @@ def train(
     if evaluate:
         print('TARGET: {0}'.format(target))
 
+        # rebuild model for validation set batch size
+        # if architecture is LSTM
+        if architecture == 'lstm':
+            val_batch_size = X_VAL.shape[0]
+            model.build(tf.TensorShape([val_batch_size, TIMESTEPS, N_FEATURES[target]]))
+
         y_boolmat_val = np.reshape(np.any(X_VAL, axis=2), (-1, 14, 1))
-        y_pred, _ = model.predict(X_VAL)
+        y_pred, _ = model(X_VAL)
         y_pred = y_pred[y_boolmat_val]
         Y_VAL = Y_VAL[y_boolmat_val]
 

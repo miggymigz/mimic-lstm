@@ -63,28 +63,20 @@ def evaluate(
 
     # retrieve data for the specific target
     for target in TARGETS:
-        model_name = MODEL_NAME.format(target)
-        model_path = os.path.join(
-            models_dir,
-            f'{architecture}_weights_{target}',
-            model_name,
-        )
-
-        # check for model existence
-        if not os.path.isfile(f'{model_path}.index'):
-            print(f'[ERROR] {model_path} is not found')
-            sys.exit(1)
-
-        # retrieve data for this model
-        data = get_data(target=target)
-
-        # load saved model
-        model = get_model(architecture, layers, target)
-        model.load_weights(model_path).expect_partial()
-
         # prepare inputs and mask
+        data = get_data(target=target)
         x_test = data['x_test'].astype(np.float32)
         y_boolmat = np.reshape(np.any(x_test, axis=2), (-1, 14, 1))
+
+        # load saved model
+        batch_size = x_test.shape[0]
+        model = get_model(
+            architecture=architecture,
+            layers=layers,
+            target=target,
+            batch_size=batch_size,
+            models_dir=models_dir,
+        )
 
         # calculate model predictions (for performance evaluation)
         y_pred, _ = model(x_test)
@@ -105,18 +97,35 @@ def evaluate(
         print('=' * 40)
 
 
-def get_model(architecture, layers, target):
+def get_model(*, architecture, layers, target, batch_size, models_dir='saved_models'):
     print(f'[INFO] Using architecture={architecture}, layers={layers}')
+
+    model_name = MODEL_NAME.format(target)
+    model_path = os.path.join(
+        models_dir,
+        f'{architecture}_weights_{target}',
+        model_name,
+    )
+
+    # check for model existence
+    if not os.path.isfile(f'{model_path}.index'):
+        print(f'[ERROR] {model_path} is not found')
+        sys.exit(1)
 
     if architecture == 'lstm':
         print(f'[INFO] Parameter layers={layers} will not be used')
         n_features = N_FEATURES[target]
-        return Mimic3Lstm(n_features)
+        model = Mimic3Lstm(n_features, batch_size=batch_size)
+        model.load_weights(model_path)
+        model.build(tf.TensorShape([batch_size, 14, n_features]))
+        return model
 
     if architecture == 'gpt2':
         n_features = N_FEATURES[target]
         n_attn_heads = N_ATTN_HEADS[target]
-        return MimicGpt2(n_features, n_attn_heads, n_layers=layers)
+        model = MimicGpt2(n_features, n_attn_heads, n_layers=layers)
+        model.load_weights(model_path)
+        return model
 
     raise AssertionError(f'Unknown model "{architecture}"')
 
