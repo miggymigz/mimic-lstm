@@ -18,6 +18,11 @@ TIMESTEPS = 14
 ROOT = os.path.join('mimic_database', 'mapped_elements')
 PREPROCESSED_FILE = os.path.join(ROOT, 'CHARTEVENTS_preprocessed.csv')
 
+N_FEATURES = {
+    'MI': 221,
+    'SEPSIS': 225,
+    'VANCOMYCIN': 224,
+}
 N_ATTN_HEADS = {
     'MI': 13,
     'SEPSIS': 9,
@@ -374,10 +379,8 @@ def return_data(
 
     if balancer:
         X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN)
-
-        if target == 'MI':
-            X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL)
-            X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST)
+        X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL)
+        X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST)
 
     no_feature_cols = X_TRAIN.shape[2]
 
@@ -391,7 +394,7 @@ def return_data(
     if cross_val:
         return (MATRIX, no_feature_cols)
 
-    if split == True:
+    if split:
         norm_params = {
             'means': means,
             'stds': stds,
@@ -402,13 +405,18 @@ def return_data(
             'test': ORIG_TEST,
         }
 
-        return (X_TRAIN, X_VAL, Y_TRAIN, Y_VAL, no_feature_cols,
-                X_TEST, Y_TEST, x_test_boolmat, y_test_boolmat,
-                x_val_boolmat, y_val_boolmat, norm_params, orig_data)
-
-    elif split == False:
-        return (np.concatenate((X_TRAIN, X_VAL), axis=0),
-                np.concatenate((Y_TRAIN, Y_VAL), axis=0), no_feature_cols)
+        return (
+            X_TRAIN, Y_TRAIN,
+            X_VAL, Y_VAL,
+            X_TEST, Y_TEST,
+            norm_params, orig_data,
+        )
+    else:
+        return (
+            np.concatenate((X_TRAIN, X_VAL), axis=0),
+            np.concatenate((Y_TRAIN, Y_VAL), axis=0),
+            no_feature_cols,
+        )
 
 
 def balance_set(x, y):
@@ -417,8 +425,20 @@ def balance_set(x, y):
     np.random.shuffle(pos_ind)
     neg_ind = np.unique(np.where(~(dataset[:, :, -1] == 1).any(axis=1))[0])
     np.random.shuffle(neg_ind)
-    length = min(pos_ind.shape[0], neg_ind.shape[0])
-    total_ind = np.hstack([pos_ind[0:length], neg_ind[0:length]])
+
+    positive_samples_count = pos_ind.shape[0]
+    negative_samples_count = neg_ind.shape[0]
+    print(f'[INFO] Positive samples Count: {positive_samples_count}')
+    print(f'[INFO] Negative samples Count: {negative_samples_count}')
+
+    multiplier = negative_samples_count // positive_samples_count
+    remainder = negative_samples_count % positive_samples_count
+
+    total_ind = np.hstack([
+        pos_ind.tolist() * multiplier,  # add more positive samples
+        pos_ind[:remainder],  # add a bit more for perfection
+        neg_ind,  # retain all negative samples
+    ])
     np.random.shuffle(total_ind)
     ind = total_ind
 
@@ -527,30 +547,15 @@ def train(
     Y_VAL = pickle.load(f)
     f.close()
 
-    fname = os.path.join('pickled_objects', f'x_boolmat_val_{target}.txt')
-    f = open(fname, 'rb')
-    X_BOOLMAT_VAL = pickle.load(f)
-    f.close()
-
-    fname = os.path.join('pickled_objects', f'y_boolmat_val_{target}.txt')
-    f = open(fname, 'rb')
-    Y_BOOLMAT_VAL = pickle.load(f)
-    f.close()
-
-    fname = os.path.join('pickled_objects', f'no_feature_cols_{target}.txt')
-    f = open(fname, 'rb')
-    no_feature_cols = pickle.load(f)
-    f.close()
-
     X_TRAIN = X_TRAIN[0:int(X_TRAIN.shape[0])]
     Y_TRAIN = Y_TRAIN[0:int(Y_TRAIN.shape[0])]
 
     # choose model
     if architecture == 'lstm':
-        model = Mimic3Lstm(no_feature_cols)
+        model = Mimic3Lstm(N_FEATURES[target])
     elif architecture == 'gpt2':
         model = MimicGpt2(
-            no_feature_cols,
+            N_FEATURES[target],
             N_ATTN_HEADS[target],
             n_days=TIMESTEPS,
             n_layers=layers,
@@ -608,30 +613,32 @@ def train(
 
     if evaluate:
         print('TARGET: {0}'.format(target))
-        Y_PRED, _ = model.predict(X_VAL)
-        Y_PRED = Y_PRED[~Y_BOOLMAT_VAL]
-        Y_VAL = Y_VAL[~Y_BOOLMAT_VAL]
+
+        y_boolmat_val = np.reshape(np.any(X_VAL, axis=2), (-1, 14, 1))
+        y_pred, _ = model.predict(X_VAL)
+        y_pred = y_pred[y_boolmat_val]
+        Y_VAL = Y_VAL[y_boolmat_val]
+
         print('Confusion Matrix Validation')
-        print(confusion_matrix(Y_VAL, np.around(Y_PRED)))
+        print(confusion_matrix(Y_VAL, np.around(y_pred)))
         print('Validation Accuracy')
-        print(accuracy_score(Y_VAL, np.around(Y_PRED)))
+        print(accuracy_score(Y_VAL, np.around(y_pred)))
         print('ROC AUC SCORE VAL')
-        print(roc_auc_score(Y_VAL, Y_PRED))
+        print(roc_auc_score(Y_VAL, y_pred))
         print('CLASSIFICATION REPORT VAL')
-        print(classification_report(Y_VAL, np.around(Y_PRED)))
+        print(classification_report(Y_VAL, np.around(y_pred)))
 
 
 def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=False):
     print(f'[pickle_objects] START: target={target}')
 
     filenames = [
-        f'X_TRAIN_{target}.txt', f'X_VAL_{target}.txt',
-        f'Y_TRAIN_{target}.txt', f'Y_VAL_{target}.txt',
+        f'X_TRAIN_{target}.txt', f'Y_TRAIN_{target}.txt',
+        f'X_VAL_{target}.txt', f'Y_VAL_{target}.txt',
         f'X_TEST_{target}.txt', f'Y_TEST_{target}.txt',
-        f'x_boolmat_test_{target}.txt', f'y_boolmat_test_{target}.txt',
-        f'x_boolmat_val_{target}.txt', f'y_boolmat_val_{target}.txt',
-        f'no_feature_cols_{target}.txt', f'features_{target}.txt',
-        f'norm_params_{target}.p', f'orig_data_{target}.p',
+        f'features_{target}.txt',
+        f'norm_params_{target}.p',
+        f'orig_data_{target}.p',
     ]
     output_filenames = [os.path.join(output_dir, name)
                         for name in filenames]
@@ -641,9 +648,8 @@ def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=Fal
         print(f'[pickle_objects] Will skip target={target}')
         return
 
-    (X_TRAIN, X_VAL, Y_TRAIN, Y_VAL, no_feature_cols,
-     X_TEST, Y_TEST, x_boolmat_test, y_boolmat_test,
-     x_boolmat_val, y_boolmat_val, norm_params, orig_data) = return_data(
+    (X_TRAIN, Y_TRAIN, X_VAL, Y_VAL,
+     X_TEST, Y_TEST, norm_params, orig_data) = return_data(
         balancer=True, target=target, pad=True,
         split=True, postprocessing=postprocessing
     )
@@ -654,13 +660,12 @@ def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=Fal
     )
 
     output_data = [
-        X_TRAIN, X_VAL,
-        Y_TRAIN, Y_VAL,
+        X_TRAIN, Y_TRAIN,
+        X_VAL, Y_VAL,
         X_TEST, Y_TEST,
-        x_boolmat_test, y_boolmat_test,
-        x_boolmat_val, y_boolmat_val,
-        no_feature_cols, features,
-        norm_params, orig_data,
+        features,
+        norm_params,
+        orig_data,
     ]
 
     # ensure pickled_objects directory exists
