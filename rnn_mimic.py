@@ -547,7 +547,7 @@ def train(
 
     # choose model
     if architecture == 'lstm':
-        model = Mimic3Lstm(no_feature_cols, optimizer=optimizer)
+        model = Mimic3Lstm(no_feature_cols)
     elif architecture == 'gpt2':
         model = MimicGpt2(
             no_feature_cols,
