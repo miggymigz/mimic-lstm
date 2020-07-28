@@ -5,7 +5,7 @@ from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, cla
 from time import time
 
 from tf_model import Mimic3Lstm
-from tf_gpt2_model import MimicGpt2
+from tf_gpt2_model import MimicGpt2, Gpt2Schedule
 
 import fire
 import numpy as np
@@ -581,8 +581,9 @@ def train(
             epsilon=1e-08,
         )
     elif optimizer == 'adam':
+        learning_rate = Gpt2Schedule(N_FEATURES[target])
         model_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=0.001,
+            learning_rate=learning_rate,
             beta_1=0.9,
             beta_2=0.98,
             epsilon=1e-9,
