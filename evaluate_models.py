@@ -72,7 +72,7 @@ def evaluate(
         batch_size = x_test.shape[0]
         model = get_model(
             architecture=architecture,
-            layers=layers,
+            layers=int(layers),
             target=target,
             batch_size=batch_size,
             models_dir=models_dir,

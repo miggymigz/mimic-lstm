@@ -345,8 +345,10 @@ def return_data(
     # save a copy of the unnormalized training set
     ORIG_TRAIN = ORIG_MATRIX[:int(tt_split*X_MATRIX.shape[0])]
 
-    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0]):int(val_percentage*X_MATRIX.shape[0])]
-    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0]):int(val_percentage*Y_MATRIX.shape[0])]
+    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])
+                         :int(val_percentage*X_MATRIX.shape[0])]
+    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])
+                         :int(val_percentage*Y_MATRIX.shape[0])]
     Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
     # save a copy of the unnormalized validation set
@@ -553,12 +555,12 @@ def train(
 
     # choose model
     if architecture == 'lstm':
-        # Because of the way the RNN state is passed from timestep to timestep, 
+        # Because of the way the RNN state is passed from timestep to timestep,
         # the model only accepts a fixed batch size once built.
-        # To run the model with a different batch_size, 
+        # To run the model with a different batch_size,
         # we need to rebuild the model and restore the weights from the checkpoint.
         model = Mimic3Lstm(
-            N_FEATURES[target], 
+            N_FEATURES[target],
             batch_size=batch_size,
         )
     elif architecture == 'gpt2':
@@ -566,7 +568,7 @@ def train(
             N_FEATURES[target],
             N_ATTN_HEADS[target],
             n_days=TIMESTEPS,
-            n_layers=layers,
+            n_layers=int(layers),
         )
     else:
         raise AssertionError(f'Unknown model "{model}"')
@@ -605,7 +607,7 @@ def train(
         x=X_TRAIN,
         y=Y_TRAIN,
         batch_size=16,
-        epochs=epochs,
+        epochs=int(epochs),
         validation_data=(X_VAL, Y_VAL),
         shuffle=True,
     )
@@ -626,7 +628,11 @@ def train(
         # if architecture is LSTM
         if architecture == 'lstm':
             val_batch_size = X_VAL.shape[0]
-            model.build(tf.TensorShape([val_batch_size, TIMESTEPS, N_FEATURES[target]]))
+            model.build(
+                tf.TensorShape(
+                    [val_batch_size, TIMESTEPS, N_FEATURES[target]]
+                )
+            )
 
         y_boolmat_val = np.reshape(np.any(X_VAL, axis=2), (-1, 14, 1))
         y_pred, _ = model(X_VAL)
