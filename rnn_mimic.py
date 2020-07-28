@@ -180,9 +180,19 @@ def temp_crit(x):
         return 0
 
 
-def return_data(balancer=True, target='MI',
-                return_cols=False, tt_split=0.7, val_percentage=0.8,
-                cross_val=False, mask=False, dataframe=False, split=True, pad=True, postprocessing=False):
+def return_data(
+    balancer=True,
+    target='MI',
+    return_cols=False,
+    tt_split=0.7,
+    val_percentage=0.8,
+    cross_val=False,
+    mask=False,
+    dataframe=False,
+    split=True,
+    pad=True,
+    postprocessing=False
+):
     """
 
     Returns synthetic or real data depending on parameter
@@ -330,10 +340,8 @@ def return_data(balancer=True, target='MI',
     # save a copy of the unnormalized training set
     ORIG_TRAIN = ORIG_MATRIX[:int(tt_split*X_MATRIX.shape[0])]
 
-    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])
-                         :int(val_percentage*X_MATRIX.shape[0])]
-    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])
-                         :int(val_percentage*Y_MATRIX.shape[0])]
+    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                     :int(val_percentage*X_MATRIX.shape[0])]
+    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                     :int(val_percentage*Y_MATRIX.shape[0])]
     Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
     # save a copy of the unnormalized validation set
@@ -365,27 +373,11 @@ def return_data(balancer=True, target='MI',
     Y_TEST[y_test_boolmat] = pad_value
 
     if balancer:
-        TRAIN = np.concatenate([X_TRAIN, Y_TRAIN], axis=2)
-        print(np.where((TRAIN[:, :, -1] == 1).any(axis=1))[0])
-        pos_ind = np.unique(
-            np.where((TRAIN[:, :, -1] == 1).any(axis=1))[0])
-        print(pos_ind)
-        np.random.shuffle(pos_ind)
-        neg_ind = np.unique(
-            np.where(~(TRAIN[:, :, -1] == 1).any(axis=1))[0])
-        print(neg_ind)
-        np.random.shuffle(neg_ind)
-        length = min(pos_ind.shape[0], neg_ind.shape[0])
-        total_ind = np.hstack([pos_ind[0:length], neg_ind[0:length]])
-        np.random.shuffle(total_ind)
-        ind = total_ind
+        X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN)
+
         if target == 'MI':
-            ind = pos_ind
-        else:
-            ind = total_ind
-        X_TRAIN = TRAIN[ind, :, 0:-1]
-        Y_TRAIN = TRAIN[ind, :, -1]
-        Y_TRAIN = Y_TRAIN.reshape(Y_TRAIN.shape[0], Y_TRAIN.shape[1], 1)
+            X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL)
+            X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST)
 
     no_feature_cols = X_TRAIN.shape[2]
 
@@ -417,6 +409,25 @@ def return_data(balancer=True, target='MI',
     elif split == False:
         return (np.concatenate((X_TRAIN, X_VAL), axis=0),
                 np.concatenate((Y_TRAIN, Y_VAL), axis=0), no_feature_cols)
+
+
+def balance_set(x, y):
+    dataset = np.concatenate([x, y], axis=2)
+    pos_ind = np.unique(np.where((dataset[:, :, -1] == 1).any(axis=1))[0])
+    np.random.shuffle(pos_ind)
+    neg_ind = np.unique(np.where(~(dataset[:, :, -1] == 1).any(axis=1))[0])
+    np.random.shuffle(neg_ind)
+    length = min(pos_ind.shape[0], neg_ind.shape[0])
+    total_ind = np.hstack([pos_ind[0:length], neg_ind[0:length]])
+    np.random.shuffle(total_ind)
+    ind = total_ind
+
+    x_balanced = dataset[ind, :, 0:-1]
+    y_balanced = dataset[ind, :, -1]
+    y_balanced = y_balanced.reshape(
+        y_balanced.shape[0], y_balanced.shape[1], 1)
+
+    return x_balanced, y_balanced
 
 
 def preprocess_matrix(matrix, target):
@@ -660,7 +671,45 @@ def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=Fal
         with open(fname, 'wb') as fd:
             pickle.dump(data, fd)
 
+    # output dataset distribution
+    dist_fname = os.path.join(output_dir, 'dataset_dist.txt')
+    with open(dist_fname, 'a') as fd:
+        print('=' * 60, file=fd)
+        print(f'Statistics report for target={target}\n', file=fd)
+
+        p_train, n_train = show_stats(Y_TRAIN)
+        p_val, n_val = show_stats(Y_VAL)
+        p_test, n_test = show_stats(Y_TEST)
+
+        print('[TRAIN]', file=fd)
+        print(f'+ {p_train}', file=fd)
+        print(f'- {n_train}\n', file=fd)
+
+        print('[VAL]', file=fd)
+        print(f'+ {p_val}', file=fd)
+        print(f'- {n_val}\n', file=fd)
+
+        print('[TEST]', file=fd)
+        print(f'+ {p_test}', file=fd)
+        print(f'- {n_test}\n', file=fd)
+
     print(f'[pickle_objects] DONE: target={target}')
+
+
+def show_stats(y):
+    pos_samples = []
+    neg_samples = []
+
+    for i in range(14):
+        _reshaped_y = y[:, i, :].reshape(-1)
+        total = len(_reshaped_y)
+        n_pos = np.sum(_reshaped_y) / total
+        n_neg = -np.sum(_reshaped_y - 1) / total
+
+        pos_samples.append(f'{n_pos:.4%}%')
+        neg_samples.append(f'{n_neg:.4%}%')
+
+    return pos_samples, neg_samples
 
 
 def train_models(

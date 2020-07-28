@@ -123,7 +123,8 @@ class Attention(tf.keras.layers.Layer):
         b = tf.reshape(b, [1, 1, nd, ns])
         w = w * b - 1e4 * (1 - b)
 
-        # Apply the attention mask
+        # project attention weights for embedding level attention
+        # apply the attention mask
         w = tf.matmul(w, p)
         w = w + mask
 
