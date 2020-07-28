@@ -561,6 +561,8 @@ def train(
         # we need to rebuild the model and restore the weights from the checkpoint.
         model = Mimic3Lstm(
             N_FEATURES[target],
+            time_steps=TIMESTEPS,
+            mask=True,
             batch_size=batch_size,
         )
     elif architecture == 'gpt2':
