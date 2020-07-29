@@ -280,7 +280,7 @@ class MimicParser:
                     mode='a',
                 )
 
-        print(f'[reduce_total] output path: {output_path}')
+        print(f'[reduce_total] DONE')
 
     def map_files(self, shard_number, filename, low_memory=False):
         ''' HADM minimum is 100001 and maximum is 199999. Shards are built off of those. 
@@ -446,7 +446,7 @@ class MimicParser:
         assert not df2.isna().values.any()
         df2.to_csv(output_path, index=False)
 
-        print(f'[create_day_blocks] output path: {output_path}')
+        print(f'[create_day_blocks] DONE')
 
     def add_admissions_columns(self):
         ''' Add demographic columns to create_day_blocks '''
@@ -495,7 +495,7 @@ class MimicParser:
             lambda x: map_dict(x, admittime_dict))
 
         df_shard.to_csv(output_path, index=False)
-        print(f'[add_admissions_columns] output path: {output_path}')
+        print(f'[add_admissions_columns] DONE')
 
     def add_patient_columns(self):
         '''
@@ -549,7 +549,7 @@ class MimicParser:
         df_shard = pd.concat([df_shard[COLUMNS], gender_dummied], axis=1)
         df_shard.to_csv(output_path, index=False)
 
-        print(f'[add_patient_columns] output path: {output_path}')
+        print(f'[add_patient_columns] DONE')
 
     def clean_prescriptions(self):
         '''
@@ -593,7 +593,7 @@ class MimicParser:
             index=False,
         )
 
-        print(f'[clean_prescriptions] output path: {output_path}')
+        print(f'[clean_prescriptions] DONE')
 
     def add_prescriptions(self):
         # ensure input csv exists
@@ -660,31 +660,50 @@ class MimicParser:
         del df_merged['D5W']
 
         df_merged.to_csv(output_path, index=False)
-        print(f'[add_prescriptions] output path: {output_path}')
+        print(f'[add_prescriptions] DONE')
 
-    def add_icd_infect(self, file_name, redo=False):
-        print('[add_icd_infect] START')
+    def add_icd_infect(self):
+        # ensure input csv exists
+        input_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_scripts.csv'
+        input_path = os.path.join(self.artifacts_dir, input_fname)
+        if not os.path.isfile(input_path):
+            raise FileNotFoundError(f'{input_fname} does not exist!')
 
-        output_file = file_name[:-4] + '_plus_icds.csv'
-        if not redo and os.path.isfile(output_file):
-            print(f'[clean_prescriptions] {output_file} already exists.')
-            print('[clean_prescriptions] Will skip this step.')
+        # do nothing if output file already exists
+        output_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_scripts_plus_icds.csv'
+        output_path = os.path.join(self.artifacts_dir, output_fname)
+        if not self.redo and os.path.isfile(output_path):
+            print(f'[add_admissions_columns] {output_fname} already exists.')
             return
 
-        df_icd = pd.read_csv('./mimic_database/PROCEDURES_ICD.csv')
-        df_micro = pd.read_csv('./mimic_database/MICROBIOLOGYEVENTS.csv')
-        self.suspect_hadmid = set(pd.unique(df_micro['HADM_ID']).tolist())
+        # ensure PROCEDURES_ICD.csv dataset file exists
+        icd_fname = 'PROCEDURES_ICD.csv'
+        icd_path = os.path.join(self.dataset_dir, icd_fname)
+        if not os.path.isfile(icd_path):
+            raise FileNotFoundError(f'{icd_fname} does not exist!')
+
+        # ensure MICROBIOLOGYEVENTS.csv dataset file exists
+        micro_fname = 'MICROBIOLOGYEVENTS.csv'
+        micro_path = os.path.join(self.dataset_dir, micro_fname)
+        if not os.path.isfile(micro_path):
+            raise FileNotFoundError(f'{micro_fname} does not exist!')
+
+        df_icd = pd.read_csv(icd_path)
+        df_micro = pd.read_csv(micro_path)
+        df_icd.columns = map(str.upper, df_icd.columns)
+        df_micro.columns = map(str.upper, df_micro.columns)
+
+        suspect_hadmid = set(pd.unique(df_micro['HADM_ID']).tolist())
         df_icd_ckd = df_icd[df_icd['ICD9_CODE'] == 585]
+        ckd = set(df_icd_ckd['HADM_ID'].values.tolist())
 
-        self.ckd = set(df_icd_ckd['HADM_ID'].values.tolist())
-
-        df = pd.read_csv(file_name)
-        df['CKD'] = df['HADM_ID'].apply(lambda x: 1 if x in self.ckd else 0)
+        df = pd.read_csv(input_path)
+        df['CKD'] = df['HADM_ID'].apply(lambda x: 1 if x in ckd else 0)
         df['Infection'] = df['HADM_ID'].apply(
-            lambda x: 1 if x in self.suspect_hadmid else 0)
-        df.to_csv(output_file, index=False)
+            lambda x: 1 if x in suspect_hadmid else 0)
+        df.to_csv(output_path, index=False)
 
-        print(f'[add_icd_infect] output file: {output_file}')
+        print(f'[add_icd_infect] DONE')
 
     def add_notes(self, file_name, redo=False):
         print('[add_notes] START')
@@ -762,8 +781,8 @@ def main(root='mimic_database', redo=False):
     mp.clean_prescriptions()
     mp.add_prescriptions()
 
-    # fpath = fpath[:-4] + '_plus_scripts.csv'
-    # mp.add_icd_infect(fpath, redo=redo)
+    # add patient ICDs (CKD or infection)
+    mp.add_icd_infect()
 
     # fpath = fpath[:-4] + '_plus_icds.csv'
     # mp.add_notes(fpath, redo=redo)
