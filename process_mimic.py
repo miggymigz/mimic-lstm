@@ -215,16 +215,16 @@ class MimicParser:
         This will filter out rows from CHARTEVENTS.csv that are not feauture relevant
         """
         # ensure input csv exists
-        input_csv_fname = 'CHARTEVENTS.csv'
-        input_path = os.path.join(self.dataset_dir, input_csv_fname)
+        input_fname = 'CHARTEVENTS.csv'
+        input_path = os.path.join(self.dataset_dir, input_fname)
         if not os.path.isfile(input_path):
-            raise FileNotFoundError(f'{input_csv_fname} does not exist!')
+            raise FileNotFoundError(f'{input_fname} does not exist!')
 
         # do nothing if output file already exists
-        output_csv_fname = 'CHARTEVENTS_reduced.csv'
-        output_file = os.path.join(self.artifacts_dir, output_csv_fname)
-        if not self.redo and os.path.isfile(output_file):
-            print(f'[reduce_total] {output_file} already exists.')
+        output_fname = 'CHARTEVENTS_reduced.csv'
+        output_path = os.path.join(self.artifacts_dir, output_fname)
+        if not self.redo and os.path.isfile(output_path):
+            print(f'[reduce_total] {output_fname} already exists.')
             return
 
         # make a set of all the item IDs that is relevant
@@ -261,20 +261,20 @@ class MimicParser:
 
             if i == 0:
                 df.to_csv(
-                    output_file,
+                    output_path,
                     index=False,
                     columns=columns,
                 )
             else:
                 df.to_csv(
-                    output_file,
+                    output_path,
                     index=False,
                     columns=columns,
                     header=None,
                     mode='a',
                 )
 
-        print(f'[reduce_total] output file: {output_file}')
+        print(f'[reduce_total] output path: {output_path}')
 
     def map_files(self, shard_number, filename, low_memory=False):
         ''' HADM minimum is 100001 and maximum is 199999. Shards are built off of those. 
@@ -329,16 +329,16 @@ class MimicParser:
         Uses pandas to take shards and build them out
         """
         # ensure input csv exists
-        input_csv_fname = 'CHARTEVENTS_reduced.csv'
-        input_path = os.path.join(self.artifacts_dir, input_csv_fname)
+        input_fname = 'CHARTEVENTS_reduced.csv'
+        input_path = os.path.join(self.artifacts_dir, input_fname)
         if not os.path.isfile(input_path):
-            raise FileNotFoundError(f'{input_csv_fname} does not exist!')
+            raise FileNotFoundError(f'{input_fname} does not exist!')
 
         # do nothing if output file already exists
-        output_csv_fname = 'CHARTEVENTS_reduced_24_hour_blocks.csv'
-        output_file = os.path.join(self.artifacts_dir, output_csv_fname)
-        if not self.redo and os.path.isfile(output_file):
-            print(f'[create_day_blocks] {output_file} already exists.')
+        output_fname = 'CHARTEVENTS_reduced_24_hour_blocks.csv'
+        output_path = os.path.join(self.artifacts_dir, output_fname)
+        if not self.redo and os.path.isfile(output_path):
+            print(f'[create_day_blocks] {output_fname} already exists.')
             return
 
         df = pd.read_csv(input_path)
@@ -435,9 +435,9 @@ class MimicParser:
         del df2['PT_max']
 
         assert not df2.isna().values.any()
-        df2.to_csv(output_file, index=False)
+        df2.to_csv(output_path, index=False)
 
-        print(f'[create_day_blocks] output file: {output_file}')
+        print(f'[create_day_blocks] output path: {output_path}')
 
     def add_admissions_columns(self):
         ''' Add demographic columns to create_day_blocks '''
