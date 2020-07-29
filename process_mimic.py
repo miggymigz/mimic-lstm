@@ -439,36 +439,54 @@ class MimicParser:
 
         print(f'[create_day_blocks] output file: {output_file}')
 
-    def add_admissions_columns(self, file_name, redo=False):
+    def add_admissions_columns(self):
         ''' Add demographic columns to create_day_blocks '''
+        # ensure input csv exists
+        input_fname = 'CHARTEVENTS_reduced_24_hour_blocks.csv'
+        input_path = os.path.join(self.artifacts_dir, input_fname)
+        if not os.path.isfile(input_path):
+            raise FileNotFoundError(f'{input_fname} does not exist!')
 
-        print('[add_admissions_columns] START')
-
-        output_file = file_name[:-4] + '_plus_admissions.csv'
-        if not redo and os.path.isfile(output_file):
-            print(f'[add_admissions_columns] {output_file} already exists.')
-            print('[add_admissions_columns] Will skip this step.')
+        # do nothing if output file already exists
+        output_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions.csv'
+        output_path = os.path.join(self.artifacts_dir, output_fname)
+        if not self.redo and os.path.isfile(output_path):
+            print(f'[add_admissions_columns] {output_fname} already exists.')
             return
 
-        df = pd.read_csv('./mimic_database/ADMISSIONS.csv')
-        ethn_dict = dict(zip(df['HADM_ID'], df['ETHNICITY']))
-        admittime_dict = dict(zip(df['HADM_ID'], df['ADMITTIME']))
-        df_shard = pd.read_csv(file_name)
+        # ensure ADMISSIONS.csv dataset file exists
+        admissions_fname = 'ADMISSIONS.csv'
+        admissions_path = os.path.join(self.dataset_dir, admissions_fname)
+        if not os.path.isfile(admissions_path):
+            raise FileNotFoundError(f'{admissions_fname} does not exist!')
+
+        # load input CSVs
+        df_shard = pd.read_csv(input_path)
+        df = pd.read_csv(admissions_path)
+        df.columns = map(str.upper, df.columns)
+
+        # get admission ID
         df_shard['HADM_ID'] = df_shard['HADMID_DAY'].str.split(
             '_').apply(lambda x: x[0])
         df_shard['HADM_ID'] = df_shard['HADM_ID'].astype('int')
+
+        # determine if patient is black or not
+        ethn_dict = dict(zip(df['HADM_ID'], df['ETHNICITY']))
         df_shard['ETHNICITY'] = df_shard['HADM_ID'].apply(
             lambda x: map_dict(x, ethn_dict))
         black_condition = df_shard['ETHNICITY'].str.contains(
             '.*black.*', flags=re.IGNORECASE)
         df_shard['BLACK'] = 0
-        df_shard['BLACK'][black_condition] = 1
+        df_shard.loc[black_condition, 'BLACK'] = 1
         del df_shard['ETHNICITY']
+
+        # add admit time of a patient
+        admittime_dict = dict(zip(df['HADM_ID'], df['ADMITTIME']))
         df_shard['ADMITTIME'] = df_shard['HADM_ID'].apply(
             lambda x: map_dict(x, admittime_dict))
-        df_shard.to_csv(output_file, index=False)
 
-        print(f'[add_admissions_columns] output file: {output_file}')
+        df_shard.to_csv(output_path, index=False)
+        print(f'[add_admissions_columns] output path: {output_path}')
 
     def add_patient_columns(self, file_name, redo=False):
         ''' Add demographic columns to create_day_blocks '''
@@ -669,11 +687,13 @@ def main(root='mimic_database', redo=False):
     # rows that doesn't contain relevant features will be dropped
     mp.reduce_total()
 
-    # TODO: add comment here
+    # reduce rows into days
+    # aggregating feature multiple measurements (within the day) into avg/min/max/std
     mp.create_day_blocks()
 
-    # fpath = fpath[:-4] + '_24_hour_blocks.csv'
-    # mp.add_admissions_columns(fpath, redo=redo)
+    # add patient admission information
+    # patient ethnicity and admit time
+    mp.add_admissions_columns()
 
     # fpath = fpath[:-4] + '_plus_admissions.csv'
     # mp.add_patient_columns(fpath, redo=redo)
