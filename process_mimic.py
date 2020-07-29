@@ -199,15 +199,19 @@ class MimicParser:
             'Stopped more than 1 month ago, but less than 1 year ago': 0.75,
             'Former user - stopped more than 1 year ago': 0.5,
             'Never used': 0,
+            '1': 1,
+            '0': 0,
         }
 
         # assert values as known
         tobacco_values = np.unique(
             df[df['ITEMID'].isin(tobacco_ids)]['VALUE']
         )
+        print(f'[INFO] Unique tobacco values: {tobacco_values.tolist()}')
+
         for v in tobacco_values:
-            if v not in tobacco_mapping.keys():
-                print(f'[ERROR] Unknown tobacco value: {v}')
+            if str(v) not in tobacco_mapping.keys():
+                print(f'[ERROR] Unknown tobacco value: {v}, type: {type(v)}')
 
         # convert strings to numbers
         predicate1 = df['ITEMID'].isin(tobacco_ids)
