@@ -118,15 +118,21 @@ class ParseItemID(object):
                                 '.*' for feature in self.script_features]
 
     def prescriptions_init(self):
+        # ensure PRESCRIPTIONS.csv dataset file exists
+        prescriptions_fname = 'PRESCRIPTIONS.csv'
+        prescriptions_path = os.path.join(
+            self.dataset_dir, prescriptions_fname)
+        if not os.path.isfile(prescriptions_path):
+            raise FileNotFoundError(f'{prescriptions_fname} does not exist!')
+
         columns = [
             'ROW_ID', 'SUBJECT_ID', 'HADM_ID',
             'DRUG', 'STARTDATE', 'ENDDATE'
         ]
 
-        self.prescriptions = pd.read_csv(
-            os.path.join(self.dataset_dir, 'PRESCRIPTIONS.csv'),
-            usecols=columns,
-        )
+        self.prescriptions = pd.read_csv(prescriptions_path)
+        self.prescriptions.columns = map(str.upper, self.prescriptions.columns)
+        self.prescriptions = self.prescriptions[columns]
         self.prescriptions.dropna(how='any', axis=0, inplace=True)
 
     def query_prescriptions(self, feature_name):
@@ -545,35 +551,49 @@ class MimicParser:
 
         print(f'[add_patient_columns] output path: {output_path}')
 
-    def clean_prescriptions(self, file_name, redo=False):
-        ''' Add prescriptions '''
+    def clean_prescriptions(self):
+        '''
+        Add prescriptions
+        '''
+        # ensure input csv exists
+        input_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_patients.csv'
+        input_path = os.path.join(self.artifacts_dir, input_fname)
+        if not os.path.isfile(input_path):
+            raise FileNotFoundError(f'{input_fname} does not exist!')
 
-        print('[clean_prescriptions] START')
-
-        output_file = './mimic_database/PRESCRIPTIONS_reduced.csv'
-        if not redo and os.path.isfile(output_file):
-            print(f'[clean_prescriptions] {output_file} already exists.')
-            print('[clean_prescriptions] Will skip this step.')
+        # do nothing if output file already exists
+        output_fname = 'PRESCRIPTIONS_reduced.csv'
+        output_path = os.path.join(self.artifacts_dir, output_fname)
+        if not self.redo and os.path.isfile(output_path):
+            print(f'[clean_prescriptions] {output_fname} already exists.')
             return
 
-        pid = ParseItemID()
-        pid.prescriptions_init()
-        pid.prescriptions.drop_duplicates(inplace=True)
-        pid.prescriptions['DRUG_FEATURE'] = np.nan
+        self.pid.prescriptions_init()
+        self.pid.prescriptions.drop_duplicates(inplace=True)
+        self.pid.prescriptions['DRUG_FEATURE'] = np.nan
 
-        df_file = pd.read_csv(file_name)
-        hadm_id_array = pd.unique(df_file['HADM_ID'])
+        # df_file = pd.read_csv(input_path)
+        # hadm_id_array = pd.unique(df_file['HADM_ID'])
 
-        for feature, pattern in zip(pid.script_features_names, pid.script_patterns):
-            condition = pid.prescriptions['DRUG'].str.contains(
-                pattern, flags=re.IGNORECASE)
-            pid.prescriptions['DRUG_FEATURE'][condition] = feature
+        for feature, pattern in zip(self.pid.script_features_names, self.pid.script_patterns):
+            condition = self.pid.prescriptions['DRUG'].str.contains(
+                pattern,
+                flags=re.IGNORECASE,
+            )
+            self.pid.prescriptions.loc[condition, 'DRUG_FEATURE'] = feature
 
-        pid.prescriptions.dropna(
-            how='any', axis=0, inplace=True, subset=['DRUG_FEATURE'])
-        pid.prescriptions.to_csv(output_file, index=False)
+        self.pid.prescriptions.dropna(
+            how='any',
+            axis=0,
+            inplace=True,
+            subset=['DRUG_FEATURE']
+        )
+        self.pid.prescriptions.to_csv(
+            output_path,
+            index=False,
+        )
 
-        print(f'[clean_prescriptions] output file: {output_file}')
+        print(f'[clean_prescriptions] output path: {output_path}')
 
     def add_prescriptions(self, file_name, redo=False):
         print('[add_prescriptions] START')
@@ -719,8 +739,8 @@ def main(root='mimic_database', redo=False):
     # patient age and gender
     mp.add_patient_columns()
 
-    # fpath = fpath[:-4] + '_plus_patients.csv'
-    # mp.clean_prescriptions(fpath, redo=redo)
+    # TODO: add comment
+    mp.clean_prescriptions()
     # mp.add_prescriptions(fpath, redo=redo)
 
     # fpath = fpath[:-4] + '_plus_scripts.csv'
