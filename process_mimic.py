@@ -606,7 +606,7 @@ class MimicParser:
         output_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_scripts.csv'
         output_path = os.path.join(self.artifacts_dir, output_fname)
         if not self.redo and os.path.isfile(output_path):
-            print(f'[add_admissions_columns] {output_fname} already exists.')
+            print(f'[add_prescriptions] {output_fname} already exists.')
             return
 
         # ensure PRESCRIPTIONS_reduced.csv exists
@@ -673,7 +673,7 @@ class MimicParser:
         output_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_scripts_plus_icds.csv'
         output_path = os.path.join(self.artifacts_dir, output_fname)
         if not self.redo and os.path.isfile(output_path):
-            print(f'[add_admissions_columns] {output_fname} already exists.')
+            print(f'[add_icd_infect] {output_fname} already exists.')
             return
 
         # ensure PROCEDURES_ICD.csv dataset file exists
@@ -705,16 +705,28 @@ class MimicParser:
 
         print(f'[add_icd_infect] DONE')
 
-    def add_notes(self, file_name, redo=False):
-        print('[add_notes] START')
+    def add_notes(self):
+        # ensure input csv exists
+        input_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_scripts_plus_icds.csv'
+        input_path = os.path.join(self.artifacts_dir, input_fname)
+        if not os.path.isfile(input_path):
+            raise FileNotFoundError(f'{input_fname} does not exist!')
 
-        output_file = file_name[:-4] + '_plus_notes.csv'
-        if not redo and os.path.isfile(output_file):
-            print(f'[clean_prescriptions] {output_file} already exists.')
-            print('[clean_prescriptions] Will skip this step.')
+        # do nothing if output file already exists
+        output_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_scripts_plus_icds_plus_notes.csv'
+        output_path = os.path.join(self.artifacts_dir, output_fname)
+        if not self.redo and os.path.isfile(output_path):
+            print(f'[add_notes] {output_fname} already exists.')
             return
 
-        df = pd.read_csv('./mimic_database/NOTEEVENTS.csv')
+        # ensure NOTEEVENTS.csv dataset file exists
+        noteevents_fname = 'NOTEEVENTS.csv'
+        noteevents_path = os.path.join(self.dataset_dir, noteevents_fname)
+        if not os.path.isfile(noteevents_path):
+            raise FileNotFoundError(f'{noteevents_fname} does not exist!')
+
+        df = pd.read_csv(noteevents_path)
+        df.columns = map(str.upper, df.columns)
         df_rad_notes = df[['TEXT', 'HADM_ID']][df['CATEGORY'] == 'Radiology']
         CTA_bool_array = df_rad_notes['TEXT'].str.contains(
             'CTA', flags=re.IGNORECASE)
@@ -730,16 +742,14 @@ class MimicParser:
             df_rad_notes['HADM_ID'][chest_angiogram_bool_array].dropna())
         hadm_id_set = set(cta_hadm_ids.tolist())
         hadm_id_set.update(CT_angiogram_hadm_ids)
-        print(len(hadm_id_set))
         hadm_id_set.update(chest_angiogram_hadm_ids)
-        print(len(hadm_id_set))
 
-        df2 = pd.read_csv(file_name)
+        df2 = pd.read_csv(input_path)
         df2['ct_angio'] = df2['HADM_ID'].apply(
             lambda x: 1 if x in hadm_id_set else 0)
-        df2.to_csv(output_file, index=False)
+        df2.to_csv(output_path, index=False)
 
-        print(f'[add_notes] output file: {output_file}')
+        print(f'[add_notes] DONE')
 
 
 def main(root='mimic_database', redo=False):
@@ -784,8 +794,8 @@ def main(root='mimic_database', redo=False):
     # add patient ICDs (CKD or infection)
     mp.add_icd_infect()
 
-    # fpath = fpath[:-4] + '_plus_icds.csv'
-    # mp.add_notes(fpath, redo=redo)
+    # add info if patient had done chest angiography
+    mp.add_notes()
 
 
 if __name__ == '__main__':
