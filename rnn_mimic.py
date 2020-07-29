@@ -776,7 +776,6 @@ def train_models(
         optimizer=optimizer,
         layers=layers,
         epochs=epochs or 13,
-        evaluate=True,
     )
     tf.keras.backend.clear_session()
 
@@ -788,7 +787,6 @@ def train_models(
         optimizer=optimizer,
         layers=layers,
         epochs=epochs or 17,
-        evaluate=True,
     )
     tf.keras.backend.clear_session()
 
@@ -800,7 +798,6 @@ def train_models(
         optimizer=optimizer,
         layers=layers,
         epochs=epochs or 14,
-        evaluate=True,
     )
     tf.keras.backend.clear_session()
 
