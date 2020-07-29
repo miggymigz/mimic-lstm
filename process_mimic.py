@@ -595,29 +595,43 @@ class MimicParser:
 
         print(f'[clean_prescriptions] output path: {output_path}')
 
-    def add_prescriptions(self, file_name, redo=False):
-        print('[add_prescriptions] START')
+    def add_prescriptions(self):
+        # ensure input csv exists
+        input_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_patients.csv'
+        input_path = os.path.join(self.artifacts_dir, input_fname)
+        if not os.path.isfile(input_path):
+            raise FileNotFoundError(f'{input_fname} does not exist!')
 
-        output_file = file_name[:-4] + '_plus_scripts.csv'
-        if not redo and os.path.isfile(output_file):
-            print(f'[clean_prescriptions] {output_file} already exists.')
-            print('[clean_prescriptions] Will skip this step.')
+        # do nothing if output file already exists
+        output_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_scripts.csv'
+        output_path = os.path.join(self.artifacts_dir, output_fname)
+        if not self.redo and os.path.isfile(output_path):
+            print(f'[add_admissions_columns] {output_fname} already exists.')
             return
 
-        df_file = pd.read_csv(file_name)
-        with open('./mimic_database/PRESCRIPTIONS_reduced.csv', 'r') as f:
-            csvreader = csv.reader(f)
-            with open('./mimic_database/PRESCRIPTIONS_reduced_byday.csv', 'w') as g:
-                csvwriter = csv.writer(g)
-                first_line = csvreader.__next__()
-                print(first_line[0:3] + ['CHARTDAY'] + [first_line[6]])
-                csvwriter.writerow(
-                    first_line[0:3] + ['CHARTDAY'] + [first_line[6]])
-                for row in csvreader:
-                    for i in pd.date_range(row[3], row[4]).strftime('%Y-%m-%d'):
-                        csvwriter.writerow(row[0:3] + [i] + [row[6]])
+        # ensure PRESCRIPTIONS_reduced.csv exists
+        prescriptions_fname = 'PRESCRIPTIONS_reduced.csv'
+        prescriptions_path = os.path.join(
+            self.artifacts_dir, prescriptions_fname)
+        if not os.path.isfile(prescriptions_path):
+            raise FileNotFoundError(f'{prescriptions_fname} does not exist!')
 
-        df = pd.read_csv('./mimic_database/PRESCRIPTIONS_reduced_byday.csv')
+        df_file = pd.read_csv(input_path)
+        scripts_day_fname = 'PRESCRIPTIONS_reduced_byday.csv'
+        scripts_day_path = os.path.join(self.artifacts_dir, scripts_day_fname)
+
+        with open(prescriptions_path, 'r') as f, open(scripts_day_path, 'w') as g:
+            csvreader = csv.reader(f)
+            csvwriter = csv.writer(g)
+
+            row = next(csvreader)
+            csvwriter.writerow(row[:3] + ['CHARTDAY'] + [row[6]])
+
+            for row in csvreader:
+                for i in pd.date_range(row[4], row[5]).strftime(r'%Y-%m-%d'):
+                    csvwriter.writerow(row[:3] + [i] + [row[6]])
+
+        df = pd.read_csv(scripts_day_path)
         df['CHARTDAY'] = df['CHARTDAY'].str.split(' ').apply(lambda x: x[0])
         df['HADMID_DAY'] = df['HADM_ID'].astype('str') + '_' + df['CHARTDAY']
         df['VALUE'] = 1
@@ -626,7 +640,13 @@ class MimicParser:
         df = df[cols]
 
         df_pivot = pd.pivot_table(
-            df, index='HADMID_DAY', columns='DRUG_FEATURE', values='VALUE', fill_value=0, aggfunc=np.amax)
+            df,
+            index='HADMID_DAY',
+            columns='DRUG_FEATURE',
+            values='VALUE',
+            fill_value=0,
+            aggfunc=np.amax,
+        )
         df_pivot.reset_index(inplace=True)
 
         df_merged = pd.merge(df_file, df_pivot, on='HADMID_DAY', how='outer')
@@ -639,9 +659,8 @@ class MimicParser:
         df_merged['dextrose'] = df_merged['dextrose'] + df_merged['D5W']
         del df_merged['D5W']
 
-        df_merged.to_csv(output_file, index=False)
-
-        print(f'[add_prescriptions] output file: {output_file}')
+        df_merged.to_csv(output_path, index=False)
+        print(f'[add_prescriptions] output path: {output_path}')
 
     def add_icd_infect(self, file_name, redo=False):
         print('[add_icd_infect] START')
@@ -739,9 +758,9 @@ def main(root='mimic_database', redo=False):
     # patient age and gender
     mp.add_patient_columns()
 
-    # TODO: add comment
+    # add patient prescriptions while in ICU
     mp.clean_prescriptions()
-    # mp.add_prescriptions(fpath, redo=redo)
+    mp.add_prescriptions()
 
     # fpath = fpath[:-4] + '_plus_scripts.csv'
     # mp.add_icd_infect(fpath, redo=redo)
