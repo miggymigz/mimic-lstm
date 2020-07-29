@@ -203,22 +203,24 @@ class MimicParser:
             '0': 0,
         }
 
-        # assert values as known
         tobacco_values = np.unique(
             df[df['ITEMID'].isin(tobacco_ids)]['VALUE']
-        )
-        print(f'[INFO] Unique tobacco values: {tobacco_values.tolist()}')
+        ).tolist()
+        print(f'[INFO] Unique tobacco values: {tobacco_values}')
 
-        for v in tobacco_values:
-            if str(v) not in tobacco_mapping.keys():
-                print(f'[ERROR] Unknown tobacco value: {v}, type: {type(v)}')
+        if tobacco_values:
+            # assert values as known
+            for v in tobacco_values:
+                if str(v) not in tobacco_mapping.keys():
+                    print(
+                        f'[ERROR] Unknown tobacco value: {v}, type: {type(v)}')
 
-        # convert strings to numbers
-        predicate1 = df['ITEMID'].isin(tobacco_ids)
-        for k, v in tobacco_mapping.items():
-            predicate2 = df['VALUE'] == k
-            df.loc[predicate1 & predicate2, 'VALUE'] = v
-            df.loc[predicate1 & predicate2, 'VALUENUM'] = v
+            # convert strings to numbers
+            predicate1 = df['ITEMID'].isin(tobacco_ids)
+            for k, v in tobacco_mapping.items():
+                predicate2 = df['VALUE'] == k
+                df.loc[predicate1 & predicate2, 'VALUE'] = v
+                df.loc[predicate1 & predicate2, 'VALUENUM'] = v
 
     def reduce_total(self):
         """
