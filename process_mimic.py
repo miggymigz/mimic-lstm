@@ -301,8 +301,7 @@ class MimicParser:
                     sliced = chunk[chunk['HADM_ID'].astype(
                         'int').isin(buckets[i])]
 
-                    _path = os.path.join(
-                        self.root, 'mapped_elements', f'shard_{i}.csv')
+                    _path = os.path.join(self.artifacts_dir, f'shard_{i}.csv')
                     sliced.to_csv(_path, index=False)
 
         else:
@@ -312,8 +311,7 @@ class MimicParser:
                     chartevents.seek(0)
                     csvreader = csv.reader(chartevents)
 
-                    _path = os.path.join(
-                        self.root, 'mapped_elements', f'shard_{i}.csv')
+                    _path = os.path.join(self.artifacts_dir, f'shard_{i}.csv')
                     with open(_path, 'w') as shard_writer:
                         csvwriter = csv.writer(shard_writer)
                         for row in csvreader:
@@ -347,7 +345,8 @@ class MimicParser:
         df['HADMID_DAY'] = df['HADM_ID'].astype('str') + '_' + df['CHARTDAY']
         df['FEATURES'] = df['ITEMID'].apply(lambda x: self.pid.rev[x])
 
-        self.hadm_dict = dict(zip(df['HADMID_DAY'], df['SUBJECT_ID']))
+        # save a mapping of HADMID_DAY -> patient ID
+        hadm_dict = dict(zip(df['HADMID_DAY'], df['SUBJECT_ID']))
 
         df_src = pd.pivot_table(
             df,
@@ -434,6 +433,10 @@ class MimicParser:
         del df2['PT_min']
         del df2['PT_max']
 
+        # insert subject ID (patient's unique identifier)
+        df2['SUBJECT_ID'] = df2['HADMID_DAY'].apply(
+            lambda x: map_dict(x, hadm_dict))
+
         assert not df2.isna().values.any()
         df2.to_csv(output_path, index=False)
 
@@ -488,32 +491,49 @@ class MimicParser:
         df_shard.to_csv(output_path, index=False)
         print(f'[add_admissions_columns] output path: {output_path}')
 
-    def add_patient_columns(self, file_name, redo=False):
-        ''' Add demographic columns to create_day_blocks '''
+    def add_patient_columns(self):
+        '''
+        Add demographic columns to create_day_blocks
+        '''
+        # ensure input csv exists
+        input_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions.csv'
+        input_path = os.path.join(self.artifacts_dir, input_fname)
+        if not os.path.isfile(input_path):
+            raise FileNotFoundError(f'{input_fname} does not exist!')
 
-        print('[add_patient_columns] START')
-
-        output_file = file_name[:-4] + '_plus_patients.csv'
-        if not redo and os.path.isfile(output_file):
-            print(f'[add_patient_columns] {output_file} already exists.')
-            print('[add_patient_columns] Will skip this step.')
+        # do nothing if output file already exists
+        output_fname = 'CHARTEVENTS_reduced_24_hour_blocks_plus_admissions_plus_patients.csv'
+        output_path = os.path.join(self.artifacts_dir, output_fname)
+        if not self.redo and os.path.isfile(output_path):
+            print(f'[add_patient_columns] {output_path} already exists.')
             return
 
-        df = pd.read_csv('./mimic_database/PATIENTS.csv')
+        # ensure PATIENTS.csv dataset file exists
+        patients_fname = 'PATIENTS.csv'
+        patients_path = os.path.join(self.dataset_dir, patients_fname)
+        if not os.path.isfile(patients_path):
+            raise FileNotFoundError(f'{patients_fname} does not exist!')
+
+        df = pd.read_csv(patients_path)
+        df.columns = map(str.upper, df.columns)
         dob_dict = dict(zip(df['SUBJECT_ID'], df['DOB']))
         gender_dict = dict(zip(df['SUBJECT_ID'], df['GENDER']))
-        df_shard = pd.read_csv(file_name)
-        df_shard['SUBJECT_ID'] = df_shard['HADMID_DAY'].apply(lambda x:
-                                                              map_dict(x, self.hadm_dict))
+
+        df_shard = pd.read_csv(input_path)
         df_shard['DOB'] = df_shard['SUBJECT_ID'].apply(
             lambda x: map_dict(x, dob_dict))
-
         df_shard['YOB'] = df_shard['DOB'].str.split(
             '-').apply(lambda x: x[0]).astype('int')
         df_shard['ADMITYEAR'] = df_shard['ADMITTIME'].str.split(
             '-').apply(lambda x: x[0]).astype('int')
 
+        # compute patient's age
+        # Patients who are older than 89 years old at any time in the database
+        # have had their date of birth shifted to obscure their age and comply with HIPAA.
+        # so we just simply set their age to 90
         df_shard['AGE'] = df_shard['ADMITYEAR'].subtract(df_shard['YOB'])
+        df_shard.loc[df_shard['AGE'] > 89, 'AGE'] = 90
+
         df_shard['GENDER'] = df_shard['SUBJECT_ID'].apply(
             lambda x: map_dict(x, gender_dict))
         gender_dummied = pd.get_dummies(df_shard['GENDER'], drop_first=True)
@@ -521,9 +541,9 @@ class MimicParser:
         COLUMNS = list(df_shard.columns)
         COLUMNS.remove('GENDER')
         df_shard = pd.concat([df_shard[COLUMNS], gender_dummied], axis=1)
-        df_shard.to_csv(output_file, index=False)
+        df_shard.to_csv(output_path, index=False)
 
-        print(f'[add_patient_columns] output file: {output_file}')
+        print(f'[add_patient_columns] output path: {output_path}')
 
     def clean_prescriptions(self, file_name, redo=False):
         ''' Add prescriptions '''
@@ -695,8 +715,9 @@ def main(root='mimic_database', redo=False):
     # patient ethnicity and admit time
     mp.add_admissions_columns()
 
-    # fpath = fpath[:-4] + '_plus_admissions.csv'
-    # mp.add_patient_columns(fpath, redo=redo)
+    # add patient demographic information
+    # patient age and gender
+    mp.add_patient_columns()
 
     # fpath = fpath[:-4] + '_plus_patients.csv'
     # mp.clean_prescriptions(fpath, redo=redo)
