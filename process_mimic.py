@@ -60,10 +60,10 @@ class ParseItemID(object):
 
         self.patterns = []
         for feature in self.features:
-            if '$' not in feature:
-                self.patterns.append('.*{0}.*'.format(feature))
-            elif '$' in feature:
+            if '$' in feature:
                 self.patterns.append(feature[1::])
+            else:
+                self.patterns.append('.*{0}.*'.format(feature))
 
         # store d_items contents
         d_items_path = os.path.join(self.dataset_dir, 'D_ITEMS.csv')
@@ -181,6 +181,35 @@ class MimicParser:
         self.pid.build_dictionary()
         self.pid.reverse_dictionary(self.pid.dictionary)
 
+    def normalize_tobacco_values(self, df):
+        '''
+        values of 'tobacco' item is string and will be dropped if it stays string
+        so we convert these values into numbers beforehand
+        1. collate all unique values and assert we know them
+        '''
+        tobacco_ids = self.pid.dictionary['tobacco']
+        tobacco_mapping = {
+            'Current use or use within 1 month of admission': 1,
+            'Stopped more than 1 month ago, but less than 1 year ago': 0.75,
+            'Former user - stopped more than 1 year ago': 0.5,
+            'Never used': 0,
+        }
+
+        # assert values as known
+        tobacco_values = np.unique(
+            df[df['ITEMID'].isin(tobacco_ids)]['VALUE']
+        )
+        for v in tobacco_values:
+            if v not in tobacco_mapping.keys():
+                print(f'[ERROR] Unknown tobacco value: {v}')
+
+        # convert strings to numbers
+        predicate1 = df['ITEMID'].isin(tobacco_ids)
+        for k, v in tobacco_mapping.items():
+            predicate2 = df['VALUE'] == k
+            df.loc[predicate1 & predicate2, 'VALUE'] = v
+            df.loc[predicate1 & predicate2, 'VALUENUM'] = v
+
     def reduce_total(self):
         """
         This will filter out rows from CHARTEVENTS.csv that are not feauture relevant
@@ -225,6 +254,9 @@ class MimicParser:
 
             # ensure column names are uppercased
             df_chunk.columns = map(str.upper, df_chunk.columns)
+
+            # normalize tobacco values: string -> number
+            self.normalize_tobacco_values(df_chunk)
 
             # drop rows that contain irrelevant features
             condition = df_chunk['ITEMID'].isin(relevant_item_ids)
