@@ -214,8 +214,6 @@ class MimicParser:
         """
         This will filter out rows from CHARTEVENTS.csv that are not feauture relevant
         """
-        print('[reduce_total] START')
-
         # ensure input csv exists
         input_csv_fname = 'CHARTEVENTS.csv'
         input_path = os.path.join(self.dataset_dir, input_csv_fname)
@@ -227,7 +225,6 @@ class MimicParser:
         output_file = os.path.join(self.artifacts_dir, output_csv_fname)
         if not self.redo and os.path.isfile(output_file):
             print(f'[reduce_total] {output_file} already exists.')
-            print('[reduce_total] Will skip this step.')
             return
 
         # make a set of all the item IDs that is relevant
@@ -331,8 +328,6 @@ class MimicParser:
         """
         Uses pandas to take shards and build them out
         """
-        print('[create_day_blocks] START')
-
         # ensure input csv exists
         input_csv_fname = 'CHARTEVENTS_reduced.csv'
         input_path = os.path.join(self.artifacts_dir, input_csv_fname)
@@ -344,7 +339,6 @@ class MimicParser:
         output_file = os.path.join(self.artifacts_dir, output_csv_fname)
         if not self.redo and os.path.isfile(output_file):
             print(f'[create_day_blocks] {output_file} already exists.')
-            print('[create_day_blocks] Will skip this step.')
             return
 
         df = pd.read_csv(input_path)
@@ -399,20 +393,13 @@ class MimicParser:
 
         df2 = pd.concat([df_src, df_std, df_min, df_max], axis=1)
 
-        if 'tobacco' in df2.columns:
-            df2['tobacco'].apply(lambda x: np.around(x))
-            del df2['tobacco_std']
-            del df2['tobacco_min']
-            del df2['tobacco_max']
-        else:
-            print('[create_day_blocks] WARN: "tobacco" not in df2.columns')
-
-        if 'daily weight' in df2.columns:
-            del df2['daily weight_std']
-            del df2['daily weight_min']
-            del df2['daily weight_max']
-        else:
-            print('[create_day_blocks] WARN: "daily weight" not in df2.columns')
+        # remove aggregates of tobacco and daily weights
+        del df2['tobacco_std']
+        del df2['tobacco_min']
+        del df2['tobacco_max']
+        del df2['daily weight_std']
+        del df2['daily weight_min']
+        del df2['daily weight_max']
 
         rel_columns = list(df2.columns)
         rel_columns = [i for i in rel_columns if '_' not in i]
@@ -427,9 +414,15 @@ class MimicParser:
                 del df2[col + '_max']
 
         for column in df2.columns:
+            # precompute the column's median value
+            column_median = df2[column].median()
+
+            # replace values > 95% quantile with the median value
             condition = df2[column] > df2[column].quantile(.95)
-            df2[column][condition] = df2[column].median()
-            df2[column].fillna(df2[column].median(), inplace=True)
+            df2.loc[condition, column] = column_median
+
+            # fill NA values with the median value
+            df2[column] = df2[column].fillna(column_median)
 
         df2['HADMID_DAY'] = df2.index
         df2['INR'] = df2['INR'] + df2['PT']
@@ -441,7 +434,7 @@ class MimicParser:
         del df2['PT_min']
         del df2['PT_max']
 
-        df2.dropna(thresh=int(0.75*len(df2.columns)), axis=0, inplace=True)
+        assert not df2.isna().values.any()
         df2.to_csv(output_file, index=False)
 
         print(f'[create_day_blocks] output file: {output_file}')
