@@ -5,7 +5,7 @@ from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, cla
 from time import time
 
 from tf_model import Mimic3Lstm
-from tf_gpt2_model import MimicGpt2, Gpt2Schedule
+from tf_gpt2_model import MimicGpt2
 
 import fire
 import numpy as np
@@ -583,9 +583,8 @@ def train(
             epsilon=1e-08,
         )
     elif optimizer == 'adam':
-        learning_rate = Gpt2Schedule(N_FEATURES[target])
         model_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=learning_rate,
+            learning_rate=0.001,
             beta_1=0.9,
             beta_2=0.98,
             epsilon=1e-9,
@@ -605,6 +604,14 @@ def train(
     # print model architecture
     model.model().summary()
 
+    # configure stuff for tensorboard (for visualization)
+    log_dir = f'{model_name}_{architecture}_l{layers}_e{epochs}'
+    log_dir = os.path.join('logs', 'fit', log_dir)
+    callback = tf.keras.callbacks.TensorBoard(
+        log_dir=log_dir,
+        histogram_freq=1,
+    )
+
     # start model training
     model.fit(
         x=X_TRAIN,
@@ -613,6 +620,7 @@ def train(
         epochs=int(epochs),
         validation_data=(X_VAL, Y_VAL),
         shuffle=True,
+        callbacks=[callback],
     )
 
     # save model weights
