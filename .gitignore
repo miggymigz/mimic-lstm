@@ -1,6 +1,6 @@
 __pycache__
-mimic_database
-pickled_objects
+mimic_database*
+pickled_objects*
 saved_models
 logs
 .DS_Store
