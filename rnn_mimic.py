@@ -619,7 +619,7 @@ def train_models(
     layers=4,
     epochs=None,
     postprocessing=True,
-    evaluate=True,
+    evaluate=False,
 ):
     # prepare dataset for MI model
     pickle_objects(
