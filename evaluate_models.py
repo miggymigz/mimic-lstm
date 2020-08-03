@@ -116,7 +116,7 @@ def get_model(*, architecture, layers, target, batch_size, models_dir='saved_mod
         print(f'[INFO] Parameter layers={layers} will not be used')
         n_features = N_FEATURES[target]
         model = Mimic3Lstm(n_features, batch_size=batch_size)
-        model.load_weights(model_path)
+        model.load_weights(model_path).expect_partial()
         model.build(tf.TensorShape([batch_size, 14, n_features]))
         return model
 
@@ -124,7 +124,7 @@ def get_model(*, architecture, layers, target, batch_size, models_dir='saved_mod
         n_features = N_FEATURES[target]
         n_attn_heads = N_ATTN_HEADS[target]
         model = MimicGpt2(n_features, n_attn_heads, n_layers=layers)
-        model.load_weights(model_path)
+        model.load_weights(model_path).expect_partial()
         return model
 
     raise AssertionError(f'Unknown model "{architecture}"')
