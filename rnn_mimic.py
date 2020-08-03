@@ -619,6 +619,7 @@ def train_models(
     layers=4,
     epochs=None,
     postprocessing=True,
+    evaluate=True,
 ):
     # prepare dataset for MI model
     pickle_objects(
@@ -649,6 +650,7 @@ def train_models(
         optimizer=optimizer,
         layers=layers,
         epochs=epochs or 13,
+        evaluate=evaluate,
     )
     tf.keras.backend.clear_session()
 
@@ -660,6 +662,7 @@ def train_models(
         optimizer=optimizer,
         layers=layers,
         epochs=epochs or 17,
+        evaluate=evaluate,
     )
     tf.keras.backend.clear_session()
 
@@ -671,6 +674,7 @@ def train_models(
         optimizer=optimizer,
         layers=layers,
         epochs=epochs or 14,
+        evaluate=evaluate,
     )
     tf.keras.backend.clear_session()
 
