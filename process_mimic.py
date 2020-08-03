@@ -288,52 +288,6 @@ class MimicParser:
 
         print(f'[reduce_total] DONE')
 
-    def map_files(self, shard_number, filename, low_memory=False):
-        ''' HADM minimum is 100001 and maximum is 199999. Shards are built off of those. 
-            See if can update based on removing rows from previous buckets to accelerate 
-            speed (each iteration 10% faster) This may not be necessary of reduce total 
-            works well (there are few features)  '''
-
-        buckets = []
-        beg = 100001
-        end = 199999
-        interval = math.ceil((end - beg)/float(shard_number))
-
-        for i in np.arange(shard_number):
-            buckets.append(
-                set(np.arange(beg+(i*interval), beg+(interval+(interval*i)))))
-
-        if low_memory == False:
-
-            for i in range(len(buckets)):
-                for i, chunk in enumerate(pd.read_csv(filename, iterator=True,
-                                                      chunksize=10000000)):
-                    print(buckets[i])
-                    print(chunk['HADM_ID'].isin(buckets[i]))
-                    sliced = chunk[chunk['HADM_ID'].astype(
-                        'int').isin(buckets[i])]
-
-                    _path = os.path.join(self.artifacts_dir, f'shard_{i}.csv')
-                    sliced.to_csv(_path, index=False)
-
-        else:
-
-            for i in range(len(buckets)):
-                with open(filename, 'r') as chartevents:
-                    chartevents.seek(0)
-                    csvreader = csv.reader(chartevents)
-
-                    _path = os.path.join(self.artifacts_dir, f'shard_{i}.csv')
-                    with open(_path, 'w') as shard_writer:
-                        csvwriter = csv.writer(shard_writer)
-                        for row in csvreader:
-                            try:
-                                if row[1] == "HADM_ID" or int(row[1]) in buckets[i]:
-                                    csvwriter.writerow(row)
-                            except ValueError as e:
-                                print(row)
-                                print(e)
-
     def create_day_blocks(self):
         """
         Uses pandas to take shards and build them out
