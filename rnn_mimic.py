@@ -58,7 +58,7 @@ def temp_crit(x):
 
 
 def return_data(
-    balancer=True,
+    balancing_scheme='truncate',
     target='MI',
     return_cols=False,
     tt_split=0.7,
@@ -212,10 +212,8 @@ def return_data(
     # save a copy of the unnormalized training set
     ORIG_TRAIN = ORIG_MATRIX[:int(tt_split*X_MATRIX.shape[0])]
 
-    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])
-                         :int(val_percentage*X_MATRIX.shape[0])]
-    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])
-                         :int(val_percentage*Y_MATRIX.shape[0])]
+    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                     :int(val_percentage*X_MATRIX.shape[0])]
+    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                     :int(val_percentage*Y_MATRIX.shape[0])]
     Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
     # save a copy of the unnormalized validation set
@@ -246,10 +244,10 @@ def return_data(
     X_TEST[x_test_boolmat] = pad_value
     Y_TEST[y_test_boolmat] = pad_value
 
-    if balancer:
-        X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN)
-        X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL)
-        X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST)
+    # balance dataset samples
+    X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN, scheme=balancing_scheme)
+    X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL, scheme=balancing_scheme)
+    X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST, scheme=balancing_scheme)
 
     no_feature_cols = X_TRAIN.shape[2]
 
@@ -288,33 +286,43 @@ def return_data(
         )
 
 
-def balance_set(x, y):
+def balance_set(x, y, scheme='duplicate'):
     dataset = np.concatenate([x, y], axis=2)
     pos_ind = np.unique(np.where((dataset[:, :, -1] == 1).any(axis=1))[0])
-    np.random.shuffle(pos_ind)
     neg_ind = np.unique(np.where(~(dataset[:, :, -1] == 1).any(axis=1))[0])
+
+    # shuffle indices of positive and negative samples
+    np.random.shuffle(pos_ind)
     np.random.shuffle(neg_ind)
 
     positive_samples_count = pos_ind.shape[0]
     negative_samples_count = neg_ind.shape[0]
-    print(f'[INFO] Positive samples Count: {positive_samples_count}')
-    print(f'[INFO] Negative samples Count: {negative_samples_count}')
 
-    multiplier = negative_samples_count // positive_samples_count
-    remainder = negative_samples_count % positive_samples_count
+    if scheme == 'duplicate':
+        multiplier = negative_samples_count // positive_samples_count
+        remainder = negative_samples_count % positive_samples_count
+        total_ind = np.hstack([
+            pos_ind.tolist() * multiplier,  # add more positive samples
+            pos_ind[:remainder],  # add a bit more for perfection
+            neg_ind,  # retain all negative samples
+        ])
+    elif scheme == 'truncate':
+        length = min(positive_samples_count, negative_samples_count)
+        total_ind = np.hstack([pos_ind[0:length], neg_ind[0:length]])
+    else:
+        raise AssertionError(f'Unknown balancing scheme: {scheme}')
 
-    total_ind = np.hstack([
-        pos_ind.tolist() * multiplier,  # add more positive samples
-        pos_ind[:remainder],  # add a bit more for perfection
-        neg_ind,  # retain all negative samples
-    ])
+    # shuffle indices of the combined samples
     np.random.shuffle(total_ind)
     ind = total_ind
 
     x_balanced = dataset[ind, :, 0:-1]
     y_balanced = dataset[ind, :, -1]
     y_balanced = y_balanced.reshape(
-        y_balanced.shape[0], y_balanced.shape[1], 1)
+        y_balanced.shape[0],
+        y_balanced.shape[1],
+        1,
+    )
 
     return x_balanced, y_balanced
 
@@ -460,7 +468,7 @@ def train(
         print(classification_report(Y_VAL, np.around(y_pred)))
 
 
-def pickle_objects(target='MI', output_dir='pickled_objects'):
+def pickle_objects(target='MI', output_dir='pickled_objects', balancing_scheme='duplicate'):
     print(f'[pickle_objects] START: target={target}')
 
     filenames = [
@@ -481,7 +489,7 @@ def pickle_objects(target='MI', output_dir='pickled_objects'):
 
     (X_TRAIN, Y_TRAIN, X_VAL, Y_VAL,
      X_TEST, Y_TEST, norm_params, orig_data) = return_data(
-        balancer=True, target=target,
+        balancing_scheme=balancing_scheme, target=target,
         pad=True, split=True,
     )
 
@@ -551,9 +559,10 @@ def show_stats(y):
 def train_models(
     architecture='lstm',
     optimizer='rmsprop',
-    layers=4,
+    layers=1,
     epochs=None,
     evaluate=False,
+    balancing_scheme='truncate',
 ):
     # prepare dataset for MI model
     pickle_objects(target='MI')
