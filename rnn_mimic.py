@@ -4,8 +4,9 @@ from pad_sequences import PadSequences
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
 from time import time
 
-from tf_model import Mimic3Lstm
-from tf_gpt2_model import MimicGpt2
+from models.tf_base_lstm import Mimic3BaseLstm
+from models.tf_lstm import Mimic3Lstm
+from models.tf_gpt2 import Mimic3Gpt2
 
 import fire
 import numpy as np
@@ -211,8 +212,10 @@ def return_data(
     # save a copy of the unnormalized training set
     ORIG_TRAIN = ORIG_MATRIX[:int(tt_split*X_MATRIX.shape[0])]
 
-    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                     :int(val_percentage*X_MATRIX.shape[0])]
-    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                     :int(val_percentage*Y_MATRIX.shape[0])]
+    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])
+                         :int(val_percentage*X_MATRIX.shape[0])]
+    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])
+                         :int(val_percentage*Y_MATRIX.shape[0])]
     Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
     # save a copy of the unnormalized validation set
@@ -316,37 +319,45 @@ def balance_set(x, y):
     return x_balanced, y_balanced
 
 
-def aggregate_features(matrix, ids):
-    assert len(matrix.shape) == 3
+def create_model(architecture, target, n_layers=1):
+    n_features = N_FEATURES[target]
+    n_attn_heads = N_ATTN_HEADS[target]
+    n_layers = n_layers if isinstance(n_layers, int) else int(n_layers)
 
-    matrix_T = matrix.transpose(0, 2, 1)
-    mask = matrix.any(axis=2)
-    ignored_indices = []
+    if architecture == 'base':
+        return Mimic3BaseLstm(time_steps=TIMESTEPS)
 
-    for i in range(matrix.shape[0]):
-        day_length = sum(mask[i])
+    if architecture == 'lstm':
+        return Mimic3Lstm(time_steps=TIMESTEPS)
 
-        if day_length < 1 or day_length > 14:
-            print(f'ERROR: Index={i}, Day length={day_length}')
-            ignored_indices.append(i)
-            continue
+    if architecture == 'gpt2':
+        return Mimic3Gpt2(
+            n_features,
+            n_attn_heads,
+            n_days=TIMESTEPS,
+            n_layers=n_layers,
+        )
 
-        for fid, fmin_id, fmax_id, fstd_id in ids:
-            features = matrix_T[i, fid, :day_length]
+    raise AssertionError(f'ERROR - Unknown architecture="{architecture}"')
 
-            fmin = np.min(features)
-            fmax = np.max(features)
-            fstd = np.std(features)
 
-            matrix[i, :day_length, fmin_id] = fmin
-            matrix[i, :day_length, fmax_id] = fmax
-            matrix[i, :day_length, fstd_id] = fstd
+def create_optimizer(optimizer, lr=0.001):
+    if optimizer == 'rmsprop':
+        return tf.keras.optimizers.RMSprop(
+            learning_rate=lr,
+            rho=0.9,
+            epsilon=1e-08,
+        )
 
-    # delete sample with invalid day length
-    if ignored_indices:
-        matrix = np.delete(matrix, ignored_indices, axis=0)
+    if optimizer == 'adam':
+        return tf.keras.optimizers.Adam(
+            learning_rate=lr,
+            beta_1=0.9,
+            beta_2=0.98,
+            epsilon=1e-9,
+        )
 
-    return matrix
+    raise AssertionError(f'ERROR - Unknown optimizer="{optimizer}"')
 
 
 def train(
@@ -357,7 +368,7 @@ def train(
     architecture='lstm',
     epochs=10,
     optimizer='rmsprop',
-    layers=4,
+    layers=1,
     batch_size=16,
 ):
     """
@@ -397,59 +408,13 @@ def train(
     Y_VAL = pickle.load(f)
     f.close()
 
-    X_TRAIN = X_TRAIN[0:int(X_TRAIN.shape[0])]
-    Y_TRAIN = Y_TRAIN[0:int(Y_TRAIN.shape[0])]
-
-    # choose model
-    if architecture == 'lstm':
-        # Because of the way the RNN state is passed from timestep to timestep,
-        # the model only accepts a fixed batch size once built.
-        # To run the model with a different batch_size,
-        # we need to rebuild the model and restore the weights from the checkpoint.
-        model = Mimic3Lstm(
-            N_FEATURES[target],
-            time_steps=TIMESTEPS,
-            mask=True,
-            batch_size=batch_size,
-        )
-    elif architecture == 'gpt2':
-        model = MimicGpt2(
-            N_FEATURES[target],
-            N_ATTN_HEADS[target],
-            n_days=TIMESTEPS,
-            n_layers=int(layers),
-        )
-    else:
-        raise AssertionError(f'Unknown model "{model}"')
-
-    # choose optimizer
-    if optimizer == 'rmsprop':
-        model_optimizer = tf.keras.optimizers.RMSprop(
-            learning_rate=0.001,
-            rho=0.9,
-            epsilon=1e-08,
-        )
-    elif optimizer == 'adam':
-        model_optimizer = tf.keras.optimizers.Adam(
-            learning_rate=0.001,
-            beta_1=0.9,
-            beta_2=0.98,
-            epsilon=1e-9,
-        )
-    else:
-        raise AssertionError(
-            f'ERROR: Optimizer "{optimizer}" is not supported'
-        )
-
-    # compile model
+    # setup model and optimizer for training
+    model = create_model(architecture, target, n_layers=layers)
     model.compile(
-        optimizer=model_optimizer,
+        optimizer=create_optimizer(optimizer),
         loss='binary_crossentropy',
         metrics=['acc'],
     )
-
-    # print model architecture
-    model.model().summary()
 
     # configure stuff for tensorboard (for visualization)
     log_dir = f'{model_name}_{architecture}_l{layers}_e{epochs}'
@@ -480,18 +445,6 @@ def train(
     print(f'{target}\'s model weights are saved in: {model_weights_dir}')
 
     if evaluate:
-        print('TARGET: {0}'.format(target))
-
-        # rebuild model for validation set batch size
-        # if architecture is LSTM
-        if architecture == 'lstm':
-            val_batch_size = X_VAL.shape[0]
-            model.build(
-                tf.TensorShape(
-                    [val_batch_size, TIMESTEPS, N_FEATURES[target]]
-                )
-            )
-
         y_boolmat_val = np.reshape(np.any(X_VAL, axis=2), (-1, 14, 1))
         y_pred, _ = model(X_VAL)
         y_pred = y_pred[y_boolmat_val]
