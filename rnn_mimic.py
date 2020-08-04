@@ -557,7 +557,7 @@ def show_stats(y):
 
 
 def train_models(
-    architecture='lstm',
+    architecture='base',
     optimizer='rmsprop',
     layers=1,
     epochs=None,
