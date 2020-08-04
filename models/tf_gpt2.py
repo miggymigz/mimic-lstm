@@ -1,26 +1,10 @@
 import tensorflow as tf
+import tensorflow_addons as tfa
 import numpy as np
 
 
-def get_angles(pos, i, d_model):
-    angle_rates = 1 / np.power(10000, (2 * (i//2)) / np.float32(d_model))
-    return pos * angle_rates
-
-
-def positional_encoding(position, d_model):
-    angle_rads = get_angles(
-        np.arange(position)[:, np.newaxis],
-        np.arange(d_model)[np.newaxis, :],
-        d_model,
-    )
-
-    # apply sin to even indices in the array; 2i
-    # apply cos to odd indices in the array; 2i+1
-    angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
-    angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
-    pos_encoding = angle_rads[np.newaxis, ...]
-
-    return tf.cast(pos_encoding, tf.float32)
+def get_initializer(range: float = 0.02) -> tf.initializers.TruncatedNormal:
+    return tf.initializers.TruncatedNormal(stddev=range)
 
 
 def shape_list(x):
@@ -29,33 +13,11 @@ def shape_list(x):
     return [dynamic[i] if s is None else s for i, s in enumerate(static)]
 
 
-def gelu(x):
-    cdf = 0.5 * (1.0 + tf.tanh((tf.sqrt(2 / np.pi)
-                                * (x + 0.044715 * tf.pow(x, 3)))))
-    return x * cdf
-
-
 def create_attention_mask(x):
     x = tf.reduce_any(x != 0, axis=-1)
     x = x[:, tf.newaxis, :, tf.newaxis]
     x = tf.cast(x, tf.float32)
     return (1 - x) * -1e9
-
-
-class MLP(tf.keras.layers.Layer):
-    def __init__(self, n_state, n_features, **kwargs):
-        super().__init__(**kwargs)
-        nx = n_features
-        self.c_fc = Conv1D(n_state, nx, name="c_fc")
-        self.c_proj = Conv1D(nx, n_state, name="c_proj")
-        self.act = gelu
-        self.dropout = tf.keras.layers.Dropout(0.1)
-
-    def call(self, x, training=False):
-        h = self.act(self.c_fc(x))
-        h2 = self.c_proj(h)
-        h2 = self.dropout(h2, training=training)
-        return h2
 
 
 class Conv1D(tf.keras.layers.Layer):
@@ -68,7 +30,7 @@ class Conv1D(tf.keras.layers.Layer):
         self.weight = self.add_weight(
             'weight',
             shape=[self.nx, self.nf],
-            initializer=tf.keras.initializers.TruncatedNormal(stddev=0.02),
+            initializer=get_initializer(0.02),
         )
         self.bias = self.add_weight(
             'bias',
@@ -165,51 +127,78 @@ class Attention(tf.keras.layers.Layer):
         return a, w
 
 
-class Decoder(tf.keras.layers.Layer):
+class MLP(tf.keras.layers.Layer):
+    def __init__(self, n_state, n_features, **kwargs):
+        super().__init__(**kwargs)
+        nx = n_features
+        self.c_fc = Conv1D(n_state, nx, name="c_fc")
+        self.c_proj = Conv1D(nx, n_state, name="c_proj")
+        self.dropout = tf.keras.layers.Dropout(0.1)
+
+    def call(self, x, training=False):
+        h = tfa.activations.gelu(self.c_fc(x))
+        h2 = self.c_proj(h)
+        h2 = self.dropout(h2, training=training)
+        return h2
+
+
+class Block(tf.keras.layers.Layer):
     def __init__(self, n_days, n_features, n_heads, **kwargs):
         super().__init__(**kwargs)
 
-        self.attn = Attention(n_days, n_features, n_heads, name='attn')
         self.ln_1 = tf.keras.layers.LayerNormalization(
             epsilon=1e-5,
             name='ln_1',
         )
-        self.mlp = MLP(4 * n_features, n_features, name='mlp')
+        self.attn = Attention(n_days, n_features, n_heads, name='attn')
         self.ln_2 = tf.keras.layers.LayerNormalization(
             epsilon=1e-5,
             name='ln_2',
         )
+        self.mlp = MLP(4 * n_features, n_features, name='mlp')
 
     def call(self, x, mask, training=False):
-        a, w = self.attn(x, mask, training=training)
-        x = self.ln_1(x + a)
+        a = self.ln_1(x)
+        a, w = self.attn(a, mask, training=training)
+        x = x + a
 
-        m = self.mlp(x, training=training)
-        x = self.ln_2(x + m)
+        m = self.ln_2(x)
+        m = self.mlp(m, training=training)
+        x = x + m
 
         return x, w
 
 
 class Mimic3Gpt2(tf.keras.Model):
-    def __init__(self, n_features, n_heads, n_days=14, n_layers=12, **kwargs):
+    def __init__(self, n_features, n_heads, n_days=14, n_layers=1, **kwargs):
         super().__init__(**kwargs)
 
         self.n_days = n_days
         self.n_features = n_features
         self.n_layers = n_layers
 
-        self.wpe = positional_encoding(n_days, n_features)
-        self.decoders = [
-            Decoder(n_days, n_features, n_heads, name=f'decoder_{i}')
+        self.wpe = tf.keras.layers.Embedding(
+            n_days,
+            n_features,
+            embeddings_initializer=get_initializer(0.02),
+            name='wpe',
+        )
+        self.drop = tf.keras.layers.Dropout(0.1)
+        self.h = [
+            Block(n_days, n_features, n_heads, name=f'decoder_{i}')
             for i in range(self.n_layers)
         ]
-        self.linear = tf.keras.layers.Dense(
+        self.ln_f = tf.keras.layers.LayerNormalization(
+            epsilon=1e-5,
+            name='ln_f',
+        )
+        self.proj = tf.keras.layers.Dense(
             1,
             activation='sigmoid',
-            kernel_initializer=tf.keras.initializers.TruncatedNormal(
-                stddev=0.02),
-            name='sigmoid'
+            kernel_initializer=get_initializer(0.02),
+            name='proj'
         )
+        self.proj_drop = tf.keras.layers.Dropout(0.1)
 
     def call(self, x, training=False):
         # sanity check
@@ -222,16 +211,22 @@ class Mimic3Gpt2(tf.keras.Model):
         attn_mask = create_attention_mask(x)
 
         # add positional encodings
-        x = x + self.wpe[:, :n_days, :]
+        position_ids = tf.range(0, n_days, dtype=tf.int32)[tf.newaxis, :]
+        x = x + self.wpe(position_ids)
+        x = self.drop(x, training=training)
 
         # feed x to n decoder blocks
         acc_attn_weights = tf.zeros((batch_size, n_days, n_features))
-        for decoder in self.decoders:
-            x, w = decoder(x, attn_mask, training=training)
+        for block in self.h:
+            x, w = block(x, attn_mask, training=training)
             acc_attn_weights += w
 
+        # apply final layer normalization
+        x = self.ln_f(x)
+
         # project linearly to get probabilities for each day
-        x = self.linear(x)
+        x = self.proj(x)
+        x = self.proj_drop(x, training=training)
 
         return x, acc_attn_weights / self.n_layers
 
