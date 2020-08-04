@@ -20,6 +20,12 @@ def map_dict(elem, dictionary):
     else:
         return np.nan
 
+
+def str_aggregator(x, separator='|'):
+    assert isinstance(x, pd.Series)
+    wew = pd.unique(x.fillna('<UNK>')).tolist()
+    return separator.join(wew)
+
 ## Proper Classes ##
 
 
@@ -182,6 +188,7 @@ class MimicParser:
         self.dataset_dir = dataset_dir
         self.artifacts_dir = artifacts_dir
         self.redo = redo
+        self.feature_types = {}
 
         self.pid = ParseItemID(dataset_dir=dataset_dir)
         self.pid.build_dictionary()
@@ -222,7 +229,41 @@ class MimicParser:
                 df.loc[predicate1 & predicate2, 'VALUE'] = v
                 df.loc[predicate1 & predicate2, 'VALUENUM'] = v
 
-    def reduce_total(self):
+    def collate_feature_types(self, df):
+        # add feature column for viewing convenience in excel file
+        if 'FEATURE' not in df.columns:
+            df['FEATURE'] = df['ITEMID'].apply(lambda x: self.pid.rev[x])
+
+        types = pd.pivot_table(
+            df,
+            index=['FEATURE', 'ITEMID'],
+            values=['VALUEUOM'],
+            aggfunc=str_aggregator,
+        )
+
+        # merge types with cache
+        types_as_dict = types.to_dict()
+        if 'VALUEUOM' in types_as_dict:
+            for k, v in types_as_dict['VALUEUOM'].items():
+                v = set(v.split('|'))
+                if k in self.feature_types:
+                    self.feature_types[k] = self.feature_types[k].union(v)
+                else:
+                    self.feature_types[k] = v
+
+        # remove added feature column
+        if 'FEATURE' in df.columns:
+            del df['FEATURE']
+
+    def export_feature_types(self):
+        # convert feature types from set to string
+        for k, v in self.feature_types.items():
+            self.feature_types[k] = ', '.join(v)
+
+        feature_types = {'MEASUREMENT': self.feature_types}
+        pd.DataFrame.from_dict(feature_types).to_excel('feature_types.xlsx')
+
+    def reduce_total(self, chunksize=10_000_000):
         """
         This will filter out rows from CHARTEVENTS.csv that are not feauture relevant
         """
@@ -245,12 +286,10 @@ class MimicParser:
             self.pid.dictionary.values(),
         )
 
-        chunksize = 10_000_000
         columns = [
             'SUBJECT_ID', 'HADM_ID', 'ICUSTAY_ID',
             'ITEMID', 'CHARTTIME', 'VALUE', 'VALUENUM'
         ]
-
         iterator = pd.read_csv(
             input_path,
             iterator=True,
@@ -267,9 +306,17 @@ class MimicParser:
             # normalize tobacco values: string -> number
             self.normalize_tobacco_values(df_chunk)
 
-            # drop rows that contain irrelevant features
+            # select rows that has ITEMID that is feature relevant
+            # and drop rows that contain nan values in the columns
             condition = df_chunk['ITEMID'].isin(relevant_item_ids)
-            df = df_chunk[condition].dropna(axis=0, subset=columns)
+            df = df_chunk[condition].dropna(
+                axis=0,
+                how='any',
+                subset=columns,
+            )
+
+            # extract feature types defined in this df chunk
+            self.collate_feature_types(df)
 
             if i == 0:
                 df.to_csv(
@@ -285,6 +332,9 @@ class MimicParser:
                     header=None,
                     mode='a',
                 )
+
+        # output excel for the feature types
+        self.export_feature_types()
 
         print(f'[reduce_total] DONE')
 
