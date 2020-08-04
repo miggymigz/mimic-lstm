@@ -166,7 +166,7 @@ class Attention(tf.keras.layers.Layer):
 
 
 class Decoder(tf.keras.layers.Layer):
-    def __init__(self, n_days, n_features, n_heads, scale=True, **kwargs):
+    def __init__(self, n_days, n_features, n_heads, **kwargs):
         super().__init__(**kwargs)
 
         self.attn = Attention(n_days, n_features, n_heads, name='attn')
@@ -191,8 +191,8 @@ class Decoder(tf.keras.layers.Layer):
 
 
 class Mimic3Gpt2(tf.keras.Model):
-    def __init__(self, n_features, n_heads, n_days=14, n_layers=12, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, n_features, n_heads, n_days=14, n_layers=12, **kwargs):
+        super().__init__(**kwargs)
 
         self.n_days = n_days
         self.n_features = n_features
