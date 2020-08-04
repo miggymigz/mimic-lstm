@@ -1,7 +1,8 @@
 from sklearn.metrics import confusion_matrix, accuracy_score, roc_auc_score, classification_report
 
-from tf_model import Mimic3Lstm
-from tf_gpt2_model import MimicGpt2
+from models.tf_base_lstm import Mimic3BaseLstm
+from models.tf_lstm import Mimic3Lstm
+from models.tf_gpt2 import Mimic3Gpt2
 
 import fire
 import numpy as np
@@ -27,18 +28,14 @@ N_ATTN_HEADS = {
     'VANCOMYCIN': 8,
 }
 PICKLED_OBJECTS = {
-    # 'x_train': 'X_TRAIN_{}.txt',
-    # 'y_train': 'Y_TRAIN_{}.txt',
-    # 'x_val': 'X_VAL_{}.txt',
-    # 'y_val': 'Y_VAL_{}.txt',
     'x_test': 'X_TEST_{}.txt',
     'y_test': 'Y_TEST_{}.txt',
 }
 
 
 def evaluate(
-    architecture='lstm',
-    layers=4,
+    architecture='base',
+    layers=1,
     models_dir='saved_models',
     pickled_dir='pickled_objects'
 ):
@@ -112,18 +109,22 @@ def get_model(*, architecture, layers, target, batch_size, models_dir='saved_mod
         print(f'[ERROR] {model_path} is not found')
         sys.exit(1)
 
+    if architecture == 'base':
+        print(f'[INFO] Parameter layers={layers} will not be used')
+        model = Mimic3BaseLstm()
+        model.load_weights(model_path).expect_partial()
+        return model
+
     if architecture == 'lstm':
         print(f'[INFO] Parameter layers={layers} will not be used')
-        n_features = N_FEATURES[target]
-        model = Mimic3Lstm(n_features, batch_size=batch_size)
+        model = Mimic3Lstm()
         model.load_weights(model_path).expect_partial()
-        model.build(tf.TensorShape([batch_size, 14, n_features]))
         return model
 
     if architecture == 'gpt2':
         n_features = N_FEATURES[target]
         n_attn_heads = N_ATTN_HEADS[target]
-        model = MimicGpt2(n_features, n_attn_heads, n_layers=layers)
+        model = Mimic3Gpt2(n_features, n_attn_heads, n_layers=layers)
         model.load_weights(model_path).expect_partial()
         return model
 
