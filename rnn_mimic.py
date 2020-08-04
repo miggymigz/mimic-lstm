@@ -67,7 +67,6 @@ def return_data(
     dataframe=False,
     split=True,
     pad=True,
-    postprocessing=False
 ):
     """
 
@@ -177,10 +176,6 @@ def return_data(
         MATRIX.shape[1]
     )
 
-    # add my own preprocessing steps
-    if postprocessing:
-        MATRIX = preprocess_matrix(MATRIX, target)
-
     # keep a copy of the original dataset
     ORIG_MATRIX = np.copy(MATRIX)
 
@@ -216,10 +211,8 @@ def return_data(
     # save a copy of the unnormalized training set
     ORIG_TRAIN = ORIG_MATRIX[:int(tt_split*X_MATRIX.shape[0])]
 
-    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])
-                         :int(val_percentage*X_MATRIX.shape[0])]
-    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])
-                         :int(val_percentage*Y_MATRIX.shape[0])]
+    X_VAL = X_MATRIX[int(tt_split*X_MATRIX.shape[0])                     :int(val_percentage*X_MATRIX.shape[0])]
+    Y_VAL = Y_MATRIX[int(tt_split*Y_MATRIX.shape[0])                     :int(val_percentage*Y_MATRIX.shape[0])]
     Y_VAL = Y_VAL.reshape(Y_VAL.shape[0], Y_VAL.shape[1], 1)
 
     # save a copy of the unnormalized validation set
@@ -321,17 +314,6 @@ def balance_set(x, y):
         y_balanced.shape[0], y_balanced.shape[1], 1)
 
     return x_balanced, y_balanced
-
-
-def preprocess_matrix(matrix, target):
-    print(f'[preprocess_matrix] target={target}')
-
-    # zero out padding days which have zero values anywhere except "meds" group
-    _meds_start = ID_MEDS_START[target]
-    _mask = ~matrix[:, :, :_meds_start].any(axis=2)
-    matrix[_mask] = 0
-
-    return matrix
 
 
 def aggregate_features(matrix, ids):
@@ -525,7 +507,7 @@ def train(
         print(classification_report(Y_VAL, np.around(y_pred)))
 
 
-def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=False):
+def pickle_objects(target='MI', output_dir='pickled_objects'):
     print(f'[pickle_objects] START: target={target}')
 
     filenames = [
@@ -546,13 +528,13 @@ def pickle_objects(target='MI', output_dir='pickled_objects', postprocessing=Fal
 
     (X_TRAIN, Y_TRAIN, X_VAL, Y_VAL,
      X_TEST, Y_TEST, norm_params, orig_data) = return_data(
-        balancer=True, target=target, pad=True,
-        split=True, postprocessing=postprocessing
+        balancer=True, target=target,
+        pad=True, split=True,
     )
 
     features = return_data(
         return_cols=True, target=target,
-        pad=True, split=True, postprocessing=postprocessing
+        pad=True, split=True,
     )
 
     output_data = [
@@ -618,28 +600,18 @@ def train_models(
     optimizer='rmsprop',
     layers=4,
     epochs=None,
-    postprocessing=True,
     evaluate=False,
 ):
     # prepare dataset for MI model
-    pickle_objects(
-        target='MI',
-        postprocessing=postprocessing,
-    )
+    pickle_objects(target='MI')
     tf.keras.backend.clear_session()
 
     # prepare dataset for SEPSIS model
-    pickle_objects(
-        target='SEPSIS',
-        postprocessing=postprocessing,
-    )
+    pickle_objects(target='SEPSIS')
     tf.keras.backend.clear_session()
 
     # prepare dataset for VANCOMYCIN model
-    pickle_objects(
-        target='VANCOMYCIN',
-        postprocessing=postprocessing,
-    )
+    pickle_objects(target='VANCOMYCIN')
     tf.keras.backend.clear_session()
 
     # train MI model
