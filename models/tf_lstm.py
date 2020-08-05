@@ -1,4 +1,4 @@
-from tensorflow.keras.layers import Dense, Layer, Masking, LSTM, TimeDistributed
+from tensorflow.keras.layers import Dense, Layer, Masking, LSTM, TimeDistributed, Dropout
 from tensorflow.keras import Model
 
 import tensorflow as tf
@@ -14,14 +14,21 @@ def create_attention_mask(x):
 class Attention(Layer):
     def __init__(self, time_steps=14, **kwargs):
         super().__init__(**kwargs)
-        self.dense = Dense(time_steps, activation=None)
+        self.dense = Dense(
+            time_steps,
+            activation=None,
+            kernel_initializer=tf.keras.initializers.TruncatedNormal(
+                stddev=0.02)
+        )
+        self.drop = Dropout(0.1)
 
     def call(self, x, mask):
         w = tf.transpose(x, perm=(0, 2, 1))
         w = self.dense(w)
+        w = self.drop(w)
         w = tf.transpose(w, perm=(0, 2, 1))
         w = w + mask
-        w = tf.nn.sigmoid(w)
+        w = tf.nn.softmax(w, axis=-2)
         x = x * w
         return x, w
 
