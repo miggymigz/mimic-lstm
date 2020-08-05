@@ -246,8 +246,8 @@ def return_data(
 
     # balance dataset samples
     X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN, scheme=balancing_scheme)
-    X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL, scheme=balancing_scheme)
-    X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST, scheme=balancing_scheme)
+    X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL, scheme='positive')
+    X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST, scheme='positive')
 
     no_feature_cols = X_TRAIN.shape[2]
 
@@ -309,6 +309,8 @@ def balance_set(x, y, scheme='duplicate'):
     elif scheme == 'truncate':
         length = min(positive_samples_count, negative_samples_count)
         total_ind = np.hstack([pos_ind[0:length], neg_ind[0:length]])
+    elif scheme == 'positive':
+        total_ind = pos_ind
     else:
         raise AssertionError(f'Unknown balancing scheme: {scheme}')
 
