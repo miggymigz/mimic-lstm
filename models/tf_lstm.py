@@ -21,7 +21,7 @@ class Attention(Layer):
         w = self.dense(w)
         w = tf.transpose(w, perm=(0, 2, 1))
         w = w + mask
-        w = tf.nn.softmax(w, axis=-2)
+        w = tf.nn.sigmoid(w)
         x = x * w
         return x, w
 
