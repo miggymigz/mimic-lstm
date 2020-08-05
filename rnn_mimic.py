@@ -58,7 +58,6 @@ def temp_crit(x):
 
 
 def return_data(
-    balancing_scheme='truncate',
     target='MI',
     return_cols=False,
     tt_split=0.7,
@@ -244,10 +243,13 @@ def return_data(
     X_TEST[x_test_boolmat] = pad_value
     Y_TEST[y_test_boolmat] = pad_value
 
-    # balance dataset samples
-    X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN, scheme=balancing_scheme)
-    X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL, scheme='positive')
-    X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST, scheme='positive')
+    # balance training dataset samples
+    if target == 'MI':
+        X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN, scheme='positive')
+        X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL, scheme='truncate')
+        X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST, scheme='truncate')
+    else:
+        X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN, scheme='truncate')
 
     no_feature_cols = X_TRAIN.shape[2]
 
@@ -470,7 +472,7 @@ def train(
         print(classification_report(Y_VAL, np.around(y_pred)))
 
 
-def pickle_objects(target='MI', output_dir='pickled_objects', balancing_scheme='duplicate'):
+def pickle_objects(target='MI', output_dir='pickled_objects'):
     print(f'[pickle_objects] START: target={target}')
 
     filenames = [
@@ -491,7 +493,7 @@ def pickle_objects(target='MI', output_dir='pickled_objects', balancing_scheme='
 
     (X_TRAIN, Y_TRAIN, X_VAL, Y_VAL,
      X_TEST, Y_TEST, norm_params, orig_data) = return_data(
-        balancing_scheme=balancing_scheme, target=target,
+        target=target,
         pad=True, split=True,
     )
 
@@ -564,7 +566,6 @@ def train_models(
     layers=1,
     epochs=None,
     evaluate=False,
-    balancing_scheme='truncate',
 ):
     # prepare dataset for MI model
     pickle_objects(target='MI')
