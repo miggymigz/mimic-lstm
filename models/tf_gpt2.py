@@ -57,7 +57,7 @@ class Attention(tf.keras.layers.Layer):
         self.n_features = n_features
         self.n_heads = n_heads
 
-        self.c_attn = Conv1D(n_features * 4, n_features, name='c_attn')
+        self.c_attn = Conv1D(n_features * 3, n_features, name='c_attn')
         self.c_proj = Conv1D(n_features, n_features, name='c_proj')
         self.attn_dropout = tf.keras.layers.Dropout(0.1)
         self.resid_dropout = tf.keras.layers.Dropout(0.1)
@@ -72,7 +72,7 @@ class Attention(tf.keras.layers.Layer):
         m = i >= j - ns + nd
         return tf.cast(m, dtype)
 
-    def _attn(self, q, k, p, v, mask, training=False):
+    def _attn(self, q, k, v, mask, training=False):
         # q, k, p, v have shape [batch, heads, sequence, features]
         w = tf.matmul(q, k, transpose_b=True)
         dk = tf.cast(shape_list(k)[-1], tf.float32)  # scale attention_scores
@@ -87,15 +87,14 @@ class Attention(tf.keras.layers.Layer):
 
         # project attention weights for embedding level attention
         # apply the attention mask
-        w = tf.matmul(w, p)
         w = w + mask
 
         # Softmax the scores
-        w = tf.nn.softmax(w, axis=-2)
+        w = tf.nn.softmax(w, axis=-1)
         w = self.attn_dropout(w, training=training)
 
         # return outputs and attn weights
-        return w * v, w
+        return tf.matmul(w, v)
 
     def merge_heads(self, x):
         x = tf.transpose(x, [0, 2, 1, 3])
@@ -113,18 +112,17 @@ class Attention(tf.keras.layers.Layer):
 
     def call(self, x, mask, training=False):
         x = self.c_attn(x)
-        q, k, p, v = tf.split(x, 4, axis=2)
+        q, k, v = tf.split(x, 3, axis=2)
         q = self.split_heads(q)
         k = self.split_heads(k)
-        p = self.split_heads(p)
         v = self.split_heads(v)
 
-        a, w = self._attn(q, k, p, v, mask, training=training)
-        a, w = self.merge_heads(a), self.merge_heads(w)
+        a = self._attn(q, k, v, mask, training=training)
+        a = self.merge_heads(a)
         a = self.c_proj(a)
         a = self.resid_dropout(a, training=training)
 
-        return a, w
+        return a
 
 
 class MLP(tf.keras.layers.Layer):
@@ -159,14 +157,14 @@ class Block(tf.keras.layers.Layer):
 
     def call(self, x, mask, training=False):
         a = self.ln_1(x)
-        a, w = self.attn(a, mask, training=training)
+        a = self.attn(a, mask, training=training)
         x = x + a
 
         m = self.ln_2(x)
         m = self.mlp(m, training=training)
         x = x + m
 
-        return x, w
+        return x
 
 
 class Mimic3Gpt2(tf.keras.Model):
@@ -177,6 +175,7 @@ class Mimic3Gpt2(tf.keras.Model):
         self.n_features = n_features
         self.n_layers = n_layers
 
+        # positional embedding layer
         self.wpe = tf.keras.layers.Embedding(
             n_days,
             n_features,
@@ -184,14 +183,19 @@ class Mimic3Gpt2(tf.keras.Model):
             name='wpe',
         )
         self.drop = tf.keras.layers.Dropout(0.1)
-        self.h = [
-            Block(n_days, n_features, n_heads, name=f'decoder_{i}')
-            for i in range(self.n_layers)
-        ]
+
+        # embedding-level attention layer
+        self.attn = tf.keras.layers.Dense(n_features)
+        self.attn_drop = tf.keras.layers.Dropout(0.1)
+
+        # transformer-decoder block layer
+        self.block = Block(n_days, n_features, n_heads, name='block')
         self.ln_f = tf.keras.layers.LayerNormalization(
             epsilon=1e-5,
             name='ln_f',
         )
+
+        # final projection layer
         self.proj = tf.keras.layers.Dense(
             1,
             activation='sigmoid',
@@ -202,7 +206,7 @@ class Mimic3Gpt2(tf.keras.Model):
 
     def call(self, x, training=False):
         # sanity check
-        batch_size, n_days, n_features = shape_list(x)
+        _, n_days, n_features = shape_list(x)
         assert n_days == self.n_days, "x's shape should be [batch_size, n_days, n_features]"
         assert n_features == self.n_features, "x's shape should be [batch_size, n_days, n_features]"
 
@@ -215,20 +219,23 @@ class Mimic3Gpt2(tf.keras.Model):
         x = x + self.wpe(position_ids)
         x = self.drop(x, training=training)
 
-        # feed x to n decoder blocks
-        acc_attn_weights = tf.zeros((batch_size, n_days, n_features))
-        for block in self.h:
-            x, w = block(x, attn_mask, training=training)
-            acc_attn_weights += w
+        # apply entry level attention
+        w = self.attn(x)
+        w = self.attn_drop(x, training=training)
+        mask = tf.reshape(attn_mask, (-1, n_days, 1))
+        w = w + mask
+        w = tf.nn.sigmoid(w)
+        x = x * w
 
-        # apply final layer normalization
+        # feed x to n decoder blocks
+        x = self.block(x, attn_mask, training=training)
         x = self.ln_f(x)
 
         # project linearly to get probabilities for each day
         x = self.proj(x)
         x = self.proj_drop(x, training=training)
 
-        return x, acc_attn_weights / self.n_layers
+        return x, w
 
     def model(self):
         x = tf.keras.layers.Input(shape=(self.n_days, self.n_features))
