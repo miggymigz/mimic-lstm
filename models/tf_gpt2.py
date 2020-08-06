@@ -224,7 +224,7 @@ class Mimic3Gpt2(tf.keras.Model):
         w = self.attn_drop(x, training=training)
         mask = tf.reshape(attn_mask, (-1, n_days, 1))
         w = w + mask
-        w = tf.nn.sigmoid(w)
+        w = tf.nn.softmax(w, axis=-2)
         x = x * w
 
         # feed x to n decoder blocks
