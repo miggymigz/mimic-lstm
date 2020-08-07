@@ -173,7 +173,6 @@ class Mimic3Gpt2(tf.keras.Model):
 
         self.n_days = n_days
         self.n_features = n_features
-        self.n_layers = n_layers
 
         # positional embedding layer
         self.wpe = tf.keras.layers.Embedding(
@@ -189,7 +188,10 @@ class Mimic3Gpt2(tf.keras.Model):
         self.attn_drop = tf.keras.layers.Dropout(0.1)
 
         # transformer-decoder block layer
-        self.block = Block(n_days, n_features, n_heads, name='block')
+        self.blocks = [
+            Block(n_days, n_features, n_heads, name=f'block_{i}')
+            for i in range(n_layers)
+        ]
         self.ln_f = tf.keras.layers.LayerNormalization(
             epsilon=1e-5,
             name='ln_f',
@@ -228,7 +230,10 @@ class Mimic3Gpt2(tf.keras.Model):
         x = x * w
 
         # feed x to n decoder blocks
-        x = self.block(x, attn_mask, training=training)
+        for block in self.blocks:
+            x = block(x, attn_mask, training=training)
+
+        # feed to final normalization layer
         x = self.ln_f(x)
 
         # project linearly to get probabilities for each day
@@ -236,7 +241,3 @@ class Mimic3Gpt2(tf.keras.Model):
         x = self.proj_drop(x, training=training)
 
         return x, w
-
-    def model(self):
-        x = tf.keras.layers.Input(shape=(self.n_days, self.n_features))
-        return tf.keras.Model(inputs=[x], outputs=self.call(x))
