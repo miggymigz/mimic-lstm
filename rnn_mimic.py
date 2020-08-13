@@ -15,7 +15,7 @@ import pandas as pd
 import pickle
 import tensorflow as tf
 
-
+import six
 from imblearn.over_sampling import SMOTE
 
 TIMESTEPS = 14
