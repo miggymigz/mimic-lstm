@@ -15,6 +15,8 @@ import pandas as pd
 import pickle
 import tensorflow as tf
 
+from imblearn.over_sampling import SMOTE
+
 TIMESTEPS = 14
 ROOT = os.path.join('mimic_database', 'mapped_elements')
 PREPROCESSED_FILE = os.path.join(ROOT, 'CHARTEVENTS_preprocessed.csv')
@@ -244,13 +246,22 @@ def return_data(
     Y_TEST[y_test_boolmat] = pad_value
 
     # balance training dataset samples
+    #MI:心肌梗塞
+    
+    smo = SMOTE(random_state=42)
+    X_smo, y_smo = smo.fit_sample(X, y)
+    X_TRAIN, Y_TRAIN = smo.fit_sample(X_TRAIN, Y_TRAIN)
+    X_VAL, Y_VAL = smo.fit_sample(X_VAL, Y_VAL)
+    X_TEST, Y_TEST = smo.fit_sample(X_TEST, Y_TEST)
+    '''
     if target == 'MI':
         X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN, scheme='positive')
+        
         X_VAL, Y_VAL = balance_set(X_VAL, Y_VAL, scheme='truncate')
         X_TEST, Y_TEST = balance_set(X_TEST, Y_TEST, scheme='truncate')
     else:
         X_TRAIN, Y_TRAIN = balance_set(X_TRAIN, Y_TRAIN, scheme='truncate')
-
+    '''
     no_feature_cols = X_TRAIN.shape[2]
 
     if mask:
@@ -287,9 +298,10 @@ def return_data(
             no_feature_cols,
         )
 
-
+#数据集的平衡处理
 def balance_set(x, y, scheme='duplicate'):
     dataset = np.concatenate([x, y], axis=2)
+    #某个病人的所有时间步上都没有患病的话，剔除掉
     pos_ind = np.unique(np.where((dataset[:, :, -1] == 1).any(axis=1))[0])
     neg_ind = np.unique(np.where(~(dataset[:, :, -1] == 1).any(axis=1))[0])
 
@@ -299,6 +311,8 @@ def balance_set(x, y, scheme='duplicate'):
 
     positive_samples_count = pos_ind.shape[0]
     negative_samples_count = neg_ind.shape[0]
+    print('positive_samples_count',positive_samples_count)
+    print('negative_samples_count',negative_samples_count)
 
     if scheme == 'duplicate':
         multiplier = negative_samples_count // positive_samples_count
