@@ -73,28 +73,31 @@ class Attention(tf.keras.layers.Layer):
         return tf.cast(m, dtype)
 
     def _attn(self, q, k, v, mask, training=False):
-        # q, k, p, v have shape [batch, heads, sequence, features]
-        w = tf.matmul(q, k, transpose_b=True)
+        # q, k, p, v have shape [batch, heads, days, head_features]
+        w = tf.matmul(q, k, transpose_a=True)
         dk = tf.cast(shape_list(k)[-1], tf.float32)  # scale attention_scores
         w = w / tf.math.sqrt(dk)
 
-        # w has shape [batch, heads, days, hfeatures]
+        # w has shape [batch, heads, dst_sequence, src_sequence]
         # where information flows from src to dst.
         _, _, nd, ns = shape_list(w)
         b = self.causal_attention_mask(nd, ns, dtype=w.dtype)
-        b = tf.reshape(b, [1, 1, nd, ns])
+        b = b[tf.newaxis, tf.newaxis, :, :]
         w = w * b - 1e4 * (1 - b)
 
-        # project attention weights for embedding level attention
-        # apply the attention mask
-        w = w + mask
-
-        # Softmax the scores
-        w = tf.nn.softmax(w, axis=-1)
+        # Apply attention mask and softmax the scores
+        w = tf.matmul(w, v, transpose_b=True)
+        w = tf.divide(w, tf.math.square(dk))
+        w = tf.transpose(w, perm=(0, 1, 3, 2))
+        w = tf.add(w, mask)
+        w = tf.nn.softmax(w, axis=-2)
         w = self.attn_dropout(w, training=training)
 
+        # Apply attention weights
+        v = tf.multiply(v, w)
+
         # return outputs and attn weights
-        return tf.matmul(w, v)
+        return v, w
 
     def merge_heads(self, x):
         x = tf.transpose(x, [0, 2, 1, 3])
@@ -117,12 +120,12 @@ class Attention(tf.keras.layers.Layer):
         k = self.split_heads(k)
         v = self.split_heads(v)
 
-        a = self._attn(q, k, v, mask, training=training)
-        a = self.merge_heads(a)
+        a, w = self._attn(q, k, v, mask, training=training)
+        a, w = self.merge_heads(a), self.merge_heads(w)
         a = self.c_proj(a)
         a = self.resid_dropout(a, training=training)
 
-        return a
+        return a, w
 
 
 class MLP(tf.keras.layers.Layer):
@@ -157,14 +160,14 @@ class Block(tf.keras.layers.Layer):
 
     def call(self, x, mask, training=False):
         a = self.ln_1(x)
-        a = self.attn(a, mask, training=training)
+        a, w = self.attn(a, mask, training=training)
         x = x + a
 
         m = self.ln_2(x)
         m = self.mlp(m, training=training)
         x = x + m
 
-        return x
+        return x, w
 
 
 class Mimic3Gpt2(tf.keras.Model):
@@ -173,6 +176,7 @@ class Mimic3Gpt2(tf.keras.Model):
 
         self.n_days = n_days
         self.n_features = n_features
+        self.n_layers = n_layers
 
         # positional embedding layer
         self.wpe = tf.keras.layers.Embedding(
@@ -182,10 +186,6 @@ class Mimic3Gpt2(tf.keras.Model):
             name='wpe',
         )
         self.drop = tf.keras.layers.Dropout(0.1)
-
-        # embedding-level attention layer
-        self.attn = tf.keras.layers.Dense(n_features)
-        self.attn_drop = tf.keras.layers.Dropout(0.1)
 
         # transformer-decoder block layer
         self.blocks = [
@@ -221,17 +221,11 @@ class Mimic3Gpt2(tf.keras.Model):
         x = x + self.wpe(position_ids)
         x = self.drop(x, training=training)
 
-        # apply entry level attention
-        w = self.attn(x)
-        w = self.attn_drop(x, training=training)
-        mask = tf.reshape(attn_mask, (-1, n_days, 1))
-        w = w + mask
-        w = tf.nn.softmax(w, axis=-2)
-        x = x * w
-
         # feed x to n decoder blocks
+        w = tf.zeros(shape_list(x))
         for block in self.blocks:
-            x = block(x, attn_mask, training=training)
+            x, wb = block(x, attn_mask, training=training)
+            w = tf.add(w, wb)
 
         # feed to final normalization layer
         x = self.ln_f(x)
@@ -240,4 +234,4 @@ class Mimic3Gpt2(tf.keras.Model):
         x = self.proj(x)
         x = self.proj_drop(x, training=training)
 
-        return x, w
+        return x, tf.divide(w, self.n_layers)
