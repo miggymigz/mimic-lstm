@@ -257,7 +257,8 @@ def return_data(
     X_smo, y_smo = smo.fit_sample(X, y)
     X_TRAIN, Y_TRAIN = smo.fit_sample(X_TRAIN, Y_TRAIN)
     X_VAL, Y_VAL = smo.fit_sample(X_VAL, Y_VAL)
-    X_TEST, Y_TEST = smo.fit_sample(X_TEST, Y_TEST)
+    #X_TEST, Y_TEST = smo.fit_sample(X_TEST, Y_TEST)
+    
     no_feature_cols = X_TRAIN.shape[2]
 
     if mask:
